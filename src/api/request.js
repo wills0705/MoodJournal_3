@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // create axios
 const instance = axios.create({
-  baseURL: 'http://127.0.0.1:5000', // set api
+  baseURL: 'https://moodjournal-3-api.onrender.com', // set api
   timeout: 10000, // request limit time
 });
 
