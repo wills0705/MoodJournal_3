@@ -142,6 +142,11 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { dayMap, monthMap } from "../lib/util";
 import { getLog } from "../api/api";
+import moodSad from '../assets/image/mood-sad.png'
+import moodFrown from '../assets/image/mood-frown.png'
+import moodNormal from '../assets/image/mood-normal.png'
+import moodSmile from '../assets/image/mood-smile.png'
+import moodLaugh from '../assets/image/mood-laugh.png'
 
 export default {
   name: "journal",
@@ -167,11 +172,11 @@ export default {
         therapy: "",
       },
       faceList: [
-        "../assets/image/mood-sad.png",
-        "../assets/image/mood-frown.png",
-        "../assets/image/mood-normal.png",
-        "../assets/image/mood-smile.png",
-        "../assets/image/mood-laugh.png",
+        moodSad,
+        moodFrown,
+        moodNormal,
+        moodSmile,
+        moodLaugh
       ],
       currentFace: "",
       fallbackCat: "",
