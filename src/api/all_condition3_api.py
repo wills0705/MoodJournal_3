@@ -6,7 +6,7 @@ import os
 from uuid import uuid4
 
 # ==== Configuration ====
-openai.api_key = "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"
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 SD_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/core"
 SD_API_KEY = "sk-AVPjbBLDSRtGSbdYpsreO42BjzCJejwOuYxLgnN6B3P1hHgF"
 IMAGE_DIR = './generated_images'
