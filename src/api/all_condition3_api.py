@@ -1,14 +1,14 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
-import openai
+from openai import OpenAI
 import requests
 import os
 from uuid import uuid4
 
 # ==== Configuration ====
 load_dotenv()
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 SD_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/core"
 SD_API_KEY = "sk-AVPjbBLDSRtGSbdYpsreO42BjzCJejwOuYxLgnN6B3P1hHgF"
 IMAGE_DIR = './generated_images'
@@ -30,14 +30,14 @@ def chat():
         return jsonify({"error": "No message provided"}), 400
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a helpful mental assistant, this is a user's journal, help me write a narrative therapy, just give therapy itself, no other words"},
                 {"role": "user", "content": user_message}
             ]
         )
-        reply = response.choices[0].message['content']
+        reply = response.choices[0].message.content
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
