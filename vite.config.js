@@ -12,5 +12,8 @@ export default defineConfig({
   })],
   resolve:{
     extensions:['.mjs','.js','.json','.vue']
+  },
+  preview: {
+    allowedHosts: ['moodjournal-3.onrender.com']
   }
 })
