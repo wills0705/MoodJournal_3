@@ -1,11 +1,13 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from dotenv import load_dotenv
 import openai
 import requests
 import os
 from uuid import uuid4
 
 # ==== Configuration ====
+load_dotenv()
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 SD_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/core"
 SD_API_KEY = "sk-AVPjbBLDSRtGSbdYpsreO42BjzCJejwOuYxLgnN6B3P1hHgF"
