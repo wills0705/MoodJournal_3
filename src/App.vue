@@ -142,6 +142,7 @@ export default {
 
         const data = await response.json();
         const imageUrlOnBackend = `https://moodjournal-3-api.onrender.com${data.image_url}`;
+        
         // 新增：上传到Firebase Storage
         const storage = getStorage();
         const storageRef = ref(storage, `generated_images/${Date.now()}.jpg`);
