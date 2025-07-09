@@ -141,13 +141,13 @@ export default {
         }
 
         const data = await response.json();
-
+        const imageUrlOnBackend = `https://moodjournal-3.onrender.com${data.image_url}`;
         // 新增：上传到Firebase Storage
         const storage = getStorage();
         const storageRef = ref(storage, `generated_images/${Date.now()}.jpg`);
         
         // 将base64转换为Blob
-        const base64Response = await fetch(data.image_url);
+        const base64Response = await fetch(imageUrlOnBackend);
         const blob = await base64Response.blob();
         // 上传文件
         const snapshot = await uploadBytes(storageRef, blob);
