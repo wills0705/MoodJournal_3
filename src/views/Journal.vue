@@ -108,7 +108,7 @@
       <div class="modal-title-container">
         <h2 class="modal-title">Therapy by AI</h2>
         <div class="therapy-rating-icon">
-          <img :src="faceIconUrl(faceList[currentJournal.mood2])" alt="therapy mood" />
+          <img :src="currentFace2" alt="" class="mood-icon" />
         </div>
       </div>
       <span class="close-btn" @click="closeModal">&times;</span>
@@ -116,7 +116,7 @@
 
     <div class="modal-content">
       <div class="content-text">
-        {{ modalContent || "分析中..." }}
+        {{ modalContent || "Analyzing..." }}
       </div>
       <div class="content-rate">
         <div class="content-rate-tip">
@@ -179,6 +179,7 @@ export default {
         moodLaugh
       ],
       currentFace: "",
+      currentFace2: "",
       fallbackCat: "",
       modalContent: null,
       isModalActive: false,
@@ -199,6 +200,7 @@ export default {
     },
 
     setFace1(item, index) {
+      this.currentFace2 = this.faceIconUrl(item);
       if (this.currentJournal.mood2 !== index) {
         this.currentJournal.mood2 = index;
         this.updateJournalMood('mood2', index);
