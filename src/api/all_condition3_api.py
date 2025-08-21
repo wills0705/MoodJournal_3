@@ -6,7 +6,6 @@ import requests
 import os
 from uuid import uuid4
 
-# ==== Configuration ====
 load_dotenv()
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 SD_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/core"
@@ -14,11 +13,8 @@ SD_API_KEY = "sk-AVPjbBLDSRtGSbdYpsreO42BjzCJejwOuYxLgnN6B3P1hHgF"
 IMAGE_DIR = './generated_images'
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
-# ==== Flask App Setup ====
 app = Flask(__name__)
-CORS(app)  # CORS for all routes
-
-# ========== ROUTES ==========
+CORS(app)  
 
 # ChatGPT narrative therapy route
 @app.route('/chat', methods=['POST'])
@@ -33,7 +29,7 @@ def chat():
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a helpful mental assistant, this is a user's journal, help me write a narrative therapy, just give therapy itself, no other words"},
+                {"role": "system", "content": "You are a helpful assistant who helps the user to reflect and be expressive when they are journaling. Based on a user's journal, generate 5 - 6 reflective questions using narrative therapy techniques. Just give therapy itself, no other words."},
                 {"role": "user", "content": user_message}
             ]
         )
@@ -57,7 +53,7 @@ def generate_image():
                 "authorization": f"Bearer {SD_API_KEY}",
                 "accept": "image/*"
             },
-            files={"none": ''},  # adjust if API requires actual file input
+            files={"none": ''},
             data={
                 "prompt": prompt,
                 "output_format": "jpeg",
@@ -87,6 +83,5 @@ def generate_image():
 def serve_image(filename):
     return send_from_directory(IMAGE_DIR, filename)
 
-# ========== MAIN ==========
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
