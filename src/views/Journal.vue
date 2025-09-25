@@ -63,7 +63,7 @@
               id="feedback-input"
               v-model="currentJournal.feedback"
               @blur="saveFeedback"
-              placeholder="Share your thoughts about this journal..."
+              placeholder="Please use the questions to reflect..."
             ></textarea>
           </div>
           <button
@@ -79,7 +79,7 @@
             @click="openModal"
             id="openModalBtn"
           >
-            create a therapy
+            help me rethink
           </button>
         </div>
       </div>
@@ -115,7 +115,7 @@
     <div class="modal-card" ref="modalCard">
       <div class="modal-header" @mousedown="startDrag">
         <div class="modal-title-container">
-          <h2 class="modal-title">Therapy by AI</h2>
+          <h2 class="modal-title">Points to reflect on</h2>
           <div class="therapy-rating-icon">
             <img :src="faceIconUrl(faceList[currentJournal.mood2])" alt="therapy mood" />
           </div>
@@ -129,7 +129,7 @@
         </div>
         <div class="content-rate">
           <div class="content-rate-tip">
-            Rate this therapy
+            Rate your mood again
           </div>
           <div class="content-rate-icons">
             <img
