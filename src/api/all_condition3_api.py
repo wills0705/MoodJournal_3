@@ -9,7 +9,7 @@ from uuid import uuid4
 load_dotenv()
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 SD_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/core"
-SD_API_KEY = "sk-AVPjbBLDSRtGSbdYpsreO42BjzCJejwOuYxLgnN6B3P1hHgF"
+SD_API_KEY = "sk-HIEZJFa0CsiGdJ5YFj3HypdNlegSSNv3X1I1RGsY8YV1YOQj"
 IMAGE_DIR = './generated_images'
 os.makedirs(IMAGE_DIR, exist_ok=True)
 

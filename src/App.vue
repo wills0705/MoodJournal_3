@@ -126,7 +126,7 @@ export default {
         obj.sdImage = "";
         console.log("hello before response")
         // Call the Flask API to generate an image
-        const response = await fetch('https://moodjournal-3-api.onrender.com/api/generate-image', {
+        const response = await fetch('https://moodjournal-3-api-isp9.onrender.com/api/generate-image', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -141,7 +141,7 @@ export default {
         }
 
         const data = await response.json();
-        const imageUrlOnBackend = `https://moodjournal-3-api.onrender.com${data.image_url}`;
+        const imageUrlOnBackend = `https://moodjournal-3-api-isp9.onrender.com${data.image_url}`;
         
         // 新增：上传到Firebase Storage
         const storage = getStorage();
