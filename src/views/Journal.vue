@@ -52,9 +52,19 @@
               v-for="(item, index) in faceList"
               :key="index"
               :src="faceIconUrl(item)"
-              class="mood-icon"
+              :class="['mood-icon', currentJournal.mood === index ? 'selected' : '']"
               @click="setFace(item, index)"
             />
+          </div>
+          <!-- 反馈输入框 -->
+          <div class="feedback-container" v-if="currentJournal.therapy">
+            <label for="feedback-input">Your Feedback</label>
+            <textarea
+              id="feedback-input"
+              v-model="currentJournal.feedback"
+              @blur="saveFeedback"
+              placeholder="Share your thoughts about this journal..."
+            ></textarea>
           </div>
           <button
             style="
@@ -64,6 +74,7 @@
               border: none;
               border-radius: 5px;
               cursor: pointer;
+              margin-top: 10px;
             "
             @click="openModal"
             id="openModalBtn"
@@ -72,7 +83,6 @@
           </button>
         </div>
       </div>
-     <!-- 模态框结构 -->
 
       <!-- Right Panel: AI Image (base64) or fallback cat -->
       <div class="journal-list-content-right">
@@ -94,47 +104,46 @@
       </div>
     </div>
   </div>
-<div 
-  class="modal-overlay" 
-  id="modalOverlay" 
-  style="z-index:10000"
-  :class="{ active: isModalActive }"
-  @click.self="closeModal" 
->
-  <div class="modal-card" @click.stop> <!-- 阻止点击卡片关闭 -->
-    <span class="close-btn" @click="closeModal">&times;</span>
-    
-    <div class="modal-header">
-      <div class="modal-title-container">
-        <h2 class="modal-title">Therapy by AI</h2>
-        <div class="therapy-rating-icon">
-          <img :src="faceIconUrl(faceList[currentJournal.mood2])" alt="therapy mood" />
-        </div>
-      </div>
-      <span class="close-btn" @click="closeModal">&times;</span>
-    </div>
 
-    <div class="modal-content">
-      <div class="content-text">
-        {{ modalContent || "Analyzing..." }}
-      </div>
-      <div class="content-rate">
-        <div class="content-rate-tip">
-          Rate this therapy
+  <!-- 模态框 -->
+  <div 
+    class="modal-overlay" 
+    id="modalOverlay"
+    :class="{ active: isModalActive }"
+    v-show="isModalActive"
+  >
+    <div class="modal-card" ref="modalCard">
+      <div class="modal-header" @mousedown="startDrag">
+        <div class="modal-title-container">
+          <h2 class="modal-title">Therapy by AI</h2>
+          <div class="therapy-rating-icon">
+            <img :src="faceIconUrl(faceList[currentJournal.mood2])" alt="therapy mood" />
+          </div>
         </div>
-        <div class="content-rate-icons">
-          <img
-            v-for="(item, index) in faceList"
-            :key="index"
-            :src="faceIconUrl(item)"
-            class="mood-icon"
-            @click="setFace1(item, index)"
-          />
+        <span class="close-btn" @click="closeModal">&times;</span>
+      </div>
+
+      <div class="modal-content">
+        <div class="content-text">
+          {{ modalContent || "Analyzing..." }}
+        </div>
+        <div class="content-rate">
+          <div class="content-rate-tip">
+            Rate this therapy
+          </div>
+          <div class="content-rate-icons">
+            <img
+              v-for="(item, index) in faceList"
+              :key="index"
+              :src="faceIconUrl(item)"
+              :class="['mood-icon', currentJournal.mood2 === index ? 'selected' : '']"
+              @click="setFace1(item, index)"
+            />
+          </div>
         </div>
       </div>
     </div>
-</div>
-</div>
+  </div>
 </template>
 
 <script>
@@ -170,6 +179,7 @@ export default {
         mood2: 2,
         sdImage: "",
         therapy: "",
+        feedback: ""
       },
       faceList: [
         moodSad,
@@ -182,12 +192,21 @@ export default {
       fallbackCat: "",
       modalContent: null,
       isModalActive: false,
+      isDragging: false,
+      dragOffset: { x: 0, y: 0 },
+      modalPosition: { x: 0, y: 0 }
     };
   },
   watch: {
     journalList() {
       this.filterJournal();
     },
+    $route(to, from) {
+      // 当路由变化时关闭模态框
+      if (to.path !== from.path) {
+        this.closeModal();
+      }
+    }
   },
   methods: {
     setFace(item, index) {
@@ -216,9 +235,28 @@ export default {
       }
     },
 
+    async saveFeedback() {
+      if (!this.currentJournal.id) return;
+      try {
+        const docRef = doc(db, "journalList", this.currentJournal.id);
+        await updateDoc(docRef, { 
+          feedback: this.currentJournal.feedback 
+        });
+        this.$message && this.$message.success("Feedback saved!");
+      } catch (err) {
+        console.error("Error saving feedback to Firestore:", err);
+      }
+    },
+
     async openModal() {
-      await this.$nextTick();
       this.isModalActive = true;
+      // 设置模态框初始位置为屏幕中央
+      this.modalPosition = {
+        x: window.innerWidth / 2 - 250,
+        y: window.innerHeight / 2 - 200
+      };
+      this.updateModalPosition();
+      
       if (this.currentJournal.therapy) {
         this.modalContent = this.currentJournal.therapy;
         return;
@@ -236,6 +274,7 @@ export default {
         this.modalContent = "Failed to fetch therapy.";
       }
     },
+    
     async saveTherapyToFirestore(reply) {
       if (!this.currentJournal.id) return;
       try {
@@ -245,22 +284,22 @@ export default {
         console.error("Error saving therapy to Firestore:", err);
       }
     },
+    
     closeModal() {
       this.isModalActive = false;
       this.modalContent = "";
-      document.removeEventListener('click', this.handleOutsideClick);
+      document.removeEventListener('mousemove', this.handleDrag);
+      document.removeEventListener('mouseup', this.stopDrag);
     },
-    handleOutsideClick(event) {
-      if (!this.$el.contains(event.target)) {
-        this.closeModal();
-      }
-    },
+    
     handleImageError(e) {
       e.target.src = this.fallbackCat;
     },
+    
     faceIconUrl(path) {
       return new URL(path, import.meta.url).href;
     },
+    
     showJournalDetail(journal) {
       this.currentJournal = { ...journal };
       if (journal.mood >= 0 && journal.mood < this.faceList.length) {
@@ -269,19 +308,23 @@ export default {
         this.currentFace = this.faceIconUrl("../assets/image/mood-normal.png");
       }
     },
+    
     filterJournal() {
       this.list = this.journalList.map((item) => {
         return {
           ...item,
           enDate: this.formatEnDate(item.currentDate),
           weekDay: this.getWeekDay(item.currentDate),
+          feedback: item.feedback || ""
         };
       });
     },
+    
     getWeekDay(date) {
       const d = new Date(date);
       return dayMap[d.getDay()];
     },
+    
     formatEnDate(date) {
       const d = new Date(date);
       const m = monthMap[d.getMonth()].slice(0, 3);
@@ -289,13 +332,52 @@ export default {
       const y = d.getFullYear();
       return `${m}.${dd}.${y}`;
     },
+
+    startDrag(e) {
+      if (e.target.classList.contains('modal-header')) {
+        this.isDragging = true;
+        const rect = this.$refs.modalCard.getBoundingClientRect();
+        this.dragOffset = {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        };
+        document.addEventListener('mousemove', this.handleDrag);
+        document.addEventListener('mouseup', this.stopDrag);
+      }
+    },
+
+    handleDrag(e) {
+      if (this.isDragging) {
+        this.modalPosition = {
+          x: e.clientX - this.dragOffset.x,
+          y: e.clientY - this.dragOffset.y
+        };
+        this.updateModalPosition();
+      }
+    },
+
+    stopDrag() {
+      this.isDragging = false;
+      document.removeEventListener('mousemove', this.handleDrag);
+      document.removeEventListener('mouseup', this.stopDrag);
+    },
+
+    updateModalPosition() {
+      if (this.$refs.modalCard) {
+        this.$refs.modalCard.style.left = `${this.modalPosition.x}px`;
+        this.$refs.modalCard.style.top = `${this.modalPosition.y}px`;
+      }
+    }
   },
   mounted() {
-    document.addEventListener('click', this.handleOutsideClick);
     this.filterJournal();
     this.fallbackCat = new URL("../assets/image/cat.jpeg", import.meta.url).href;
     this.currentFace = this.faceIconUrl("../assets/image/mood-normal.png");
   },
+  beforeUnmount() {
+    document.removeEventListener('mousemove', this.handleDrag);
+    document.removeEventListener('mouseup', this.stopDrag);
+  }
 };
 </script>
 
@@ -312,6 +394,36 @@ export default {
   border-radius: 8px;
   margin: 20px 0;
 }
+
+.feedback-container {
+  margin-top: 15px;
+  width: 100%;
+
+  label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #555;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 14px;
+
+    &:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+  }
+}
+
 .journal-list {
   height: 100%;
   overflow: hidden;
@@ -430,11 +542,17 @@ export default {
 
           .mood-icon {
             width: 100%;
-
             height: 40px;
             margin-left: 8px;
             margin-top: 10px;
             cursor: pointer;
+            transition: transform 0.2s, border 0.2s;
+
+            &.selected {
+              border: 2px solid #007bff;
+              border-radius: 50%;
+              transform: scale(1.1);
+            }
           }
         }
       }
@@ -483,35 +601,42 @@ export default {
     }
   }
 }
-/* 模态框背景 */
+
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0); /* 更透明的背景 */
   display: none;
-  justify-content: center;
-  align-items: center;
   z-index: 1000;
+  pointer-events: none; /* 允许点击穿透 */
+
+  &.active {
+    display: block;
+  }
 }
 
-/* 模态框卡片 */
 .modal-card {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-  max-width: 500px;
-  width: 90%;
+  width: 500px;
   text-align: center;
   padding: 24px;
-  position: relative;
-}
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 5px;
+  position: fixed;
+  cursor: default;
+  user-select: none;
+  pointer-events: auto; /* 允许内部元素交互 */
+  z-index: 1001;
+
+  .modal-header {
+    cursor: move;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
 }
 
 .modal-title-container {
@@ -525,8 +650,6 @@ export default {
   margin-bottom: 0px;
 }
 
-
-/* 关闭按钮 */
 .close-btn {
   position: absolute;
   top: 16px;
@@ -541,7 +664,6 @@ export default {
   color: #000;
 }
 
-/* 标题 */
 .modal-title {
   text-align: center;
   font-size: 22px;
@@ -550,16 +672,16 @@ export default {
   color: #333;
 }
 
-/* 内容区域 */
 .modal-content {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   min-height: 400px;
+  background-color: white;
+  border-radius: 8px;
 }
 
-/* 内容文本 */
 .content-text {
   width: 100%;
   max-width: 460px;
@@ -576,12 +698,10 @@ export default {
   text-align: left;
   border: 1px solid #ddd;
   border-radius: 8px;
-  background-color: #f9f9f9;
+  background-color: #fff;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-
-/* 表情评分区域 */
 .content-rate {
   margin-top: 24px;
   text-align: center;
@@ -621,19 +741,17 @@ export default {
   height: 40px;
   margin: 5px;
   cursor: pointer;
-  transition: transform 0.3s;
+  transition: transform 0.3s, border 0.3s;
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
 
-.mood-icon:hover {
-  transform: scale(1.1);
-}
+  &.selected {
+    border: 2px solid #007bff;
+    transform: scale(1.1);
+  }
 
-.modal-overlay {
-  display: none; /* 默认隐藏 */
-  &.active {
-    display: flex; /* 显示模态框 */
+  &:hover {
+    transform: scale(1.1);
   }
 }
 </style>
