@@ -56,6 +56,29 @@
               @click="setFace(item, index)"
             />
           </div>
+
+          <!-- ✅ Therapy review messages (minimal additions) -->
+          <div
+            v-if="currentJournal.therapy && currentJournal.therapyApproved === false"
+            class="pending-message"
+            style="margin-top:12px;"
+          >
+            The therapy is successfully generated, please wait patiently for review.
+          </div>
+          <div
+            v-if="currentJournal.therapy && currentJournal.therapyApproved !== false && currentJournal.therapyApproved !== true"
+            class="pending-message"
+            style="margin-top:12px;"
+          >
+            The therapy is rejected.
+          </div>
+          <div
+            v-if="currentJournal.therapy && currentJournal.therapyApproved === true"
+            class="pending-message"
+            style="margin-top:12px;"
+          >
+            Therapy approved. Click the button below to view.
+          </div>
           <!-- 反馈输入框 -->
           <div class="feedback-container" v-if="currentJournal.therapy">
             <label for="feedback-input">Your Feedback</label>
@@ -78,6 +101,8 @@
             "
             @click="openModal"
             id="openModalBtn"
+            :disabled="!currentJournal.therapy || currentJournal.therapyApproved !== true"
+            title="Therapy will be available after approval"
           >
             help me rethink
           </button>
@@ -181,7 +206,8 @@ export default {
         mood2: 2,
         sdImage: "",
         therapy: "",
-        feedback: ""
+        feedback: "",
+        therapyApproved: undefined
       },
       faceList: [
         moodSad,
@@ -204,7 +230,6 @@ export default {
       this.filterJournal();
     },
     $route(to, from) {
-      // 当路由变化时关闭模态框
       if (to.path !== from.path) {
         this.closeModal();
       }
@@ -251,18 +276,25 @@ export default {
     },
 
     async openModal() {
+      if (!this.currentJournal.therapy || this.currentJournal.therapyApproved !== true) {
+        this.$message && this.$message.warning('Therapy will be available after approval.');
+        return;
+      }
+
       this.isModalActive = true;
-      // 设置模态框初始位置为屏幕中央
       this.modalPosition = {
         x: window.innerWidth / 2 - 250,
         y: window.innerHeight / 2 - 200
       };
       this.updateModalPosition();
       
+      // If approved and already present, just show it
       if (this.currentJournal.therapy) {
         this.modalContent = this.currentJournal.therapy;
         return;
       }
+
+      // (Normally RA approves after it exists, so this path is rare)
       this.modalContent = "Generating...";
       try {
         const res = await getLog({ message: this.currentJournal.content });
@@ -323,14 +355,13 @@ export default {
     },
     
     getWeekDay(ymd) {
-      // ymd: "YYYY-MM-DD" → parse as local date
       const [y, m, d] = String(ymd).split('-').map(Number);
-      const dt = new Date(y, m - 1, d); // local
+      const dt = new Date(y, m - 1, d);
       return dayMap[dt.getDay()];
     },
     formatEnDate(ymd) {
       const [y, m, d] = String(ymd).split('-').map(Number);
-      const dt = new Date(y, m - 1, d); // local
+      const dt = new Date(y, m - 1, d);
       const mon = monthMap[dt.getMonth()].slice(0, 3);
       const dd = String(dt.getDate()).padStart(2, '0');
       return `${mon}.${dd}.${y}`;
