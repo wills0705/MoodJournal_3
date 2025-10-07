@@ -124,14 +124,22 @@ export default {
         obj.mood = 2; 
         obj.mood2 = 2;
         obj.sdImage = "";
-        console.log("hello before response")
+        const presetMap = {
+          1: "line-art",       // Pencil sketch
+          2: "comic-book",     // Watercolor (closest "illustrative" preset)
+          3: "pixel-art",      // Pixel art
+          4: "analog-film",    // Oil painting (closest feel)
+          5: "neon-punk"       // Cyberpunk neon
+        };
+        const style_preset = presetMap[obj.buttonNumber] || "digital-art";
+        const prompt = `${obj.content}`;
         // Call the Flask API to generate an image
         const response = await fetch('https://moodjournal-3-api-isp9.onrender.com/api/generate-image', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ prompt: obj.content }), // Use the journal content as the prompt
+          body: JSON.stringify({ prompt, style_preset }),
         });
 
         console.log("response from front end is : " + response)

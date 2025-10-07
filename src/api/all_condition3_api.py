@@ -11,6 +11,11 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 SD_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/core"
 SD_API_KEY = "sk-HIEZJFa0CsiGdJ5YFj3HypdNlegSSNv3X1I1RGsY8YV1YOQj"
 IMAGE_DIR = './generated_images'
+ALLOWED_PRESETS = {
+    "3d-model","analog-film","anime","cinematic","comic-book","digital-art",
+    "enhance","fantasy-art","isometric","line-art","low-poly","modeling-compound",
+    "neon-punk","origami","photographic","pixel-art","tile-texture"
+}
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
 app = Flask(__name__)
@@ -44,8 +49,18 @@ def generate_image():
     try:
         data = request.json
         prompt = data.get("prompt") if data else None
+        style_preset = data.get("style_preset")
         if not prompt:
             return jsonify({"error": "Prompt is required"}), 400
+         # validate style_preset (optional, but safer)
+        if style_preset and style_preset not in ALLOWED_PRESETS:
+            return jsonify({"error": f"Invalid style_preset: {style_preset}"}), 400
+        payload = {
+            "prompt": prompt,
+            "output_format": "jpeg",
+        }
+        if style_preset:
+            payload["style_preset"] = style_preset
 
         response = requests.post(
             SD_API_URL,
@@ -54,10 +69,7 @@ def generate_image():
                 "accept": "image/*"
             },
             files={"none": ''},
-            data={
-                "prompt": prompt,
-                "output_format": "jpeg",
-            },
+            data=payload,
         )
 
         if response.status_code == 200:
