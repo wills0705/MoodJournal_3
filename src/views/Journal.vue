@@ -127,28 +127,28 @@
 
       <div class="modal-content">
         <div class="content-text">
-          {{ modalContent || "Analyzing..." }}
-        </div>
-        <div
-          v-if="currentJournal.therapy && currentJournal.therapyApproved === false"
-          class="pending-message"
-          style="margin-top:12px;"
-        >
-          The therapy is successfully generated, please wait patiently for review.
-        </div>
-        <div
-          v-if="currentJournal.therapy && currentJournal.therapyApproved !== false && currentJournal.therapyApproved !== true"
-          class="pending-message"
-          style="margin-top:12px;"
-        >
-          The therapy is rejected.
-        </div>
-        <div
-          v-if="currentJournal.therapy && currentJournal.therapyApproved === true"
-          class="pending-message"
-          style="margin-top:12px;"
-        >
-          {{ modalContent }}
+          <!-- {{ modalContent || "Analyzing..." }} -->
+          <div
+            v-if="currentJournal.therapy && currentJournal.therapyApproved === false"
+            class="pending-message"
+            style="margin-top:12px;"
+          >
+            The reflect points are successfully generated, please wait patiently for review.
+          </div>
+          <div
+            v-if="currentJournal.therapy && currentJournal.therapyApproved === true"
+            class="pending-message"
+            style="margin-top:12px;"
+          >
+            {{ modalContent }}
+          </div>
+          <div
+            v-else
+            class="pending-message"
+            style="margin-top:12px;"
+          >
+            Analyzing...
+          </div>
         </div>
         <div class="content-rate">
           <div class="content-rate-tip">
