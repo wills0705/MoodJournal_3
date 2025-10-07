@@ -87,7 +87,7 @@
       <!-- Right Panel: AI Image (base64) or fallback cat -->
       <div class="journal-list-content-right">
         <div class="content-img">
-          <template v-if="currentJournal.isApproved">
+          <template v-if="currentJournal.isApproved === true">
             <img
               :src="currentJournal.sdImage"
               alt="Generated Image"
@@ -95,9 +95,11 @@
               @error="handleImageError"
             />
           </template>
-          <div v-else class="pending-message">
-            The picture is successfully generated, please wait patiently for
-            review.
+          <div v-if="currentJournal.isApproved === false" class="pending-message">
+            The picture is successfully generated, please wait patiently for review.
+          </div>
+          <div v-if="currentJournal.isApproved !== false && currentJournal.isApproved !== true" class="pending-message">
+            The picture is rejected.
           </div>
           <div class="img-text">AI-Generated Image</div>
         </div>
@@ -320,17 +322,18 @@ export default {
       });
     },
     
-    getWeekDay(date) {
-      const d = new Date(date);
-      return dayMap[d.getDay()];
+    getWeekDay(ymd) {
+      // ymd: "YYYY-MM-DD" → parse as local date
+      const [y, m, d] = String(ymd).split('-').map(Number);
+      const dt = new Date(y, m - 1, d); // local
+      return dayMap[dt.getDay()];
     },
-    
-    formatEnDate(date) {
-      const d = new Date(date);
-      const m = monthMap[d.getMonth()].slice(0, 3);
-      const dd = d.getDate();
-      const y = d.getFullYear();
-      return `${m}.${dd}.${y}`;
+    formatEnDate(ymd) {
+      const [y, m, d] = String(ymd).split('-').map(Number);
+      const dt = new Date(y, m - 1, d); // local
+      const mon = monthMap[dt.getMonth()].slice(0, 3);
+      const dd = String(dt.getDate()).padStart(2, '0');
+      return `${mon}.${dd}.${y}`;
     },
 
     startDrag(e) {
