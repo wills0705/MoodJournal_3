@@ -103,13 +103,13 @@
           </div>
           <div class="img-text">AI-Generated Image</div>
         </div>
+        <button class="refresh-fab" @click="refreshCurrent">⟲ Refresh</button>
+        <div class="refresh-caption">check whether the image got approved</div>
       </div>
     </div>
   </div>
-
-  <!-- 模态框 -->
-  <div 
-    class="modal-overlay" 
+  <div
+    class="modal-overlay"
     id="modalOverlay"
     :class="{ active: isModalActive }"
     v-show="isModalActive"
@@ -167,7 +167,7 @@
 </template>
 
 <script>
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { dayMap, monthMap } from "../lib/util";
 import { getLog } from "../api/api";
@@ -222,13 +222,28 @@ export default {
       this.filterJournal();
     },
     $route(to, from) {
-      // 当路由变化时关闭模态框
       if (to.path !== from.path) {
         this.closeModal();
       }
     }
   },
   methods: {
+    async refreshCurrent() {
+      if (!this.currentJournal.id) return;
+      try {
+        const snap = await getDoc(doc(db, 'journalList', this.currentJournal.id));
+        if (snap.exists()) {
+          const latest = snap.data();
+          this.currentJournal = { ...this.currentJournal, ...latest };
+          this.list = this.list.map(it => it.id === this.currentJournal.id ? { ...it, ...latest } : it);
+          this.$message && this.$message.success('Refreshed');
+        }
+      } catch (e) {
+        console.error('Refresh failed:', e);
+        this.$message && this.$message.error('Refresh failed');
+      }
+    },
+
     setFace(item, index) {
       this.currentFace = this.faceIconUrl(item);
       if (this.currentJournal.mood !== index) {
@@ -270,7 +285,6 @@ export default {
 
     async openModal() {
       this.isModalActive = true;
-      // 设置模态框初始位置为屏幕中央
       this.modalPosition = {
         x: window.innerWidth / 2 - 250,
         y: window.innerHeight / 2 - 200
@@ -341,14 +355,13 @@ export default {
     },
     
     getWeekDay(ymd) {
-      // ymd: "YYYY-MM-DD" → parse as local date
       const [y, m, d] = String(ymd).split('-').map(Number);
-      const dt = new Date(y, m - 1, d); // local
+      const dt = new Date(y, m - 1, d);
       return dayMap[dt.getDay()];
     },
     formatEnDate(ymd) {
       const [y, m, d] = String(ymd).split('-').map(Number);
-      const dt = new Date(y, m - 1, d); // local
+      const dt = new Date(y, m - 1, d);
       const mon = monthMap[dt.getMonth()].slice(0, 3);
       const dd = String(dt.getDate()).padStart(2, '0');
       return `${mon}.${dd}.${y}`;
@@ -443,6 +456,38 @@ export default {
       box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
     }
   }
+}
+
+.refresh-fab {
+  position: fixed;
+  right: 190px;
+  bottom: 50px;
+  z-index: 2000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: #2d7dfe;
+  color: #fff;
+  border: none;
+  border-radius: 28px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(45,125,254,.35);
+}
+.refresh-fab:hover { opacity: .95; }
+.refresh-icon { display:inline-block; transform: translateY(1px); }
+
+.refresh-caption {
+  position: fixed;
+  right: 190px;
+  bottom: 24px;
+  width: 280px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.3;
+  z-index: 2000;
 }
 
 .journal-list {
@@ -629,10 +674,10 @@ export default {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0); /* 更透明的背景 */
+  background-color: rgba(0, 0, 0, 0);
   display: none;
   z-index: 1000;
-  pointer-events: none; /* 允许点击穿透 */
+  pointer-events: none;
 
   &.active {
     display: block;
@@ -649,7 +694,7 @@ export default {
   position: fixed;
   cursor: default;
   user-select: none;
-  pointer-events: auto; /* 允许内部元素交互 */
+  pointer-events: auto;
   z-index: 1001;
 
   .modal-header {
@@ -706,7 +751,7 @@ export default {
 .content-text {
   width: 100%;
   max-width: 460px;
-  height: 300px;               
+  height: 300px;
   overflow-y: scroll;
   font-size: 16px;
   color: #333;
