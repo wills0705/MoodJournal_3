@@ -10,17 +10,24 @@
       <!-- Main App Components -->
       <div class="app-container" v-else>
         <div class="mood-journal-app-content-header">
-          <div :class="['tab-item', activeIndex === index ? 'active-item' : '']" v-for="(item, index) in tabList"
-            :key="index" @click="handleClick(index)">
+          <div
+            :class="['tab-item', activeIndex === index ? 'active-item' : '']"
+            v-for="(item, index) in tabList"
+            :key="index"
+            @click="handleClick(index)"
+          >
             {{ item.name }}
           </div>
-          <!-- Logout Button -->
           <button @click="logout" class="logout-button">Log Out</button>
         </div>
         <div class="mood-journal-app-content-content">
           <keep-alive exclude="analysis">
-            <component :is="currentComponent" :journalList="journalList" @updateJournal="handleUpdate">
-            </component>
+            <component
+              :is="currentComponent"
+              :journalList="journalList"
+              :saveStatus="saveStatus"
+              @updateJournal="handleUpdate"
+            />
           </keep-alive>
         </div>
       </div>
@@ -44,63 +51,44 @@ import {
   query,
   orderBy,
 } from 'firebase/firestore';
-import { 
-  getStorage, 
-  ref, 
-  uploadBytes, 
-  getDownloadURL 
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL
 } from "firebase/storage";
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default {
-  components: {
-    Write,
-    Journal,
-    Analysis,
-    Signup,
-    Login,
-  },
+  components: { Write, Journal, Analysis, Signup, Login },
   data() {
     return {
-      journalList: [
-        
-      ],
+      journalList: [],
       tabList: [
-        {
-          name: 'Write new',
-          componentName: 'write',
-        },
-        {
-          name: 'Prev Journal',
-          componentName: 'journal',
-        },
-        {
-          name: 'Analytics',
-          componentName: 'analysis',
-        },
+        { name: 'Write new',   componentName: 'write' },
+        { name: 'Prev Journal', componentName: 'journal' },
+        { name: 'Analytics',    componentName: 'analysis' },
       ],
       activeIndex: 0,
       currentComponent: 'write',
       isAuthenticated: false,
       showSignup: false,
+      saveStatus: 'idle'
     };
   },
   created() {
-    // Monitor authentication state
-     onAuthStateChanged(auth, (user) => {
-       if (user) {
-         this.isAuthenticated = true;
-         this.fetchJournalList();
-       } else {
-         this.isAuthenticated = false;
-         this.journalList = [];
-       }
-     });
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        this.isAuthenticated = true;
+        this.fetchJournalList();
+      } else {
+        this.isAuthenticated = false;
+        this.journalList = [];
+      }
+    });
   },
   methods: {
-    toggleAuthForm() {
-      this.showSignup = !this.showSignup;
-    },
+    toggleAuthForm() { this.showSignup = !this.showSignup; },
     async logout() {
       try {
         await signOut(auth);
@@ -116,85 +104,73 @@ export default {
     },
 
     async handleUpdate(obj) {
+      // Tell Write.vue we're saving
+      this.saveStatus = 'saving';
+
       try {
-        // Add user and timestamp metadata
         const userId = auth.currentUser.uid;
         obj.userId = userId;
         obj.timestamp = Date.now();
-        obj.mood = 2; 
+        obj.mood = 2;
         obj.mood2 = 2;
         obj.sdImage = "";
+
         const presetMap = {
-          1: "line-art",       // Pencil sketch
-          2: "comic-book",     // Watercolor (closest "illustrative" preset)
-          3: "pixel-art",      // Pixel art
-          4: "analog-film",    // Oil painting (closest feel)
-          5: "neon-punk"       // Cyberpunk neon
+          1: "line-art",
+          2: "comic-book",
+          3: "pixel-art",
+          4: "analog-film",
+          5: "neon-punk"
         };
         const style_preset = presetMap[obj.buttonNumber] || "digital-art";
         const prompt = `${obj.content}`;
-        // Call the Flask API to generate an image
+
+        // Generate image via your Condition-3 backend
         const response = await fetch('https://moodjournal-3-api-isp9.onrender.com/api/generate-image', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, style_preset }),
         });
-
-        console.log("response from front end is : " + response)
-
-        if (!response.ok) {
-          throw new Error('Failed to generate image');
-        }
+        if (!response.ok) throw new Error('Failed to generate image');
 
         const data = await response.json();
         const imageUrlOnBackend = `https://moodjournal-3-api-isp9.onrender.com${data.image_url}`;
-        
-        // 新增：上传到Firebase Storage
+
+        // Upload to Firebase Storage
         const storage = getStorage();
         const storageRef = ref(storage, `generated_images/${Date.now()}.jpg`);
-        
-        // 将base64转换为Blob
-        const base64Response = await fetch(imageUrlOnBackend);
-        const blob = await base64Response.blob();
-        // 上传文件
+        const fetched = await fetch(imageUrlOnBackend);
+        const blob = await fetched.blob();
         const snapshot = await uploadBytes(storageRef, blob);
         const downloadURL = await getDownloadURL(snapshot.ref);
 
+        obj.sdImage = downloadURL;
 
-        const imageUrl = downloadURL; // Extract the image URL from the response
-
-        // Add the generated image URL to the journal object under the 'sdImage' field
-        obj.sdImage = imageUrl;
-
-        // Save the updated journal entry (with image) to Firestore
+        // Save entry to Firestore
         const docRef = await addDoc(collection(db, 'journalList'), obj);
         obj.id = docRef.id;
 
-        // Add the new journal entry to the local journalList
         this.journalList.unshift(obj);
 
-        // Provide feedback to the user
         this.$message.success('Journal entry saved successfully');
+        this.saveStatus = 'success';
+        setTimeout(() => (this.saveStatus = 'idle'), 800);
       } catch (error) {
         console.error('Error adding document:', error);
         this.$message.error('Failed to save journal entry');
+        this.saveStatus = 'error';
+        setTimeout(() => (this.saveStatus = 'idle'), 1200);
       }
     },
 
-
     async fetchJournalList() {
       try {
-        const userId = auth.currentUser.uid; // Get current user's UID
-        const q = query(
-          collection(db, 'journalList'),
-          orderBy('timestamp', 'desc')
-        );
+        const userId = auth.currentUser.uid;
+        const q = query(collection(db, 'journalList'), orderBy('timestamp', 'desc'));
         const querySnapshot = await getDocs(q);
         this.journalList = querySnapshot.docs
           .map((doc) => ({ id: doc.id, ...doc.data() }))
-          .filter((entry) => entry.userId === userId); // Only include entries from the current user
+          .filter((entry) => entry.userId === userId);
       } catch (error) {
         console.error('Error fetching journalList:', error);
         this.journalList = [];
@@ -219,11 +195,7 @@ export default {
     display: flex;
     flex-direction: column;
 
-    .app-container {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-    }
+    .app-container { height: 100%; display: flex; flex-direction: column; }
 
     &-header {
       flex: none;
@@ -246,11 +218,7 @@ export default {
       }
     }
 
-    &-content {
-      flex: auto;
-      overflow: hidden;
-      margin-top: 20px;
-    }
+    &-content { flex: auto; overflow: hidden; margin-top: 20px; }
   }
 }
 

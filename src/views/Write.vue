@@ -4,7 +4,10 @@
       <div class="header-date">{{ currentDate }}</div>
     </div>
     <div class="journal-write-content">
-      <a-textarea v-model:value="journalContent" placeholder="Click here to start write your new journal" />
+      <a-textarea
+        v-model:value="journalContent"
+        placeholder="Click here to start write your new journal"
+      />
     </div>
     <div class="journal-write-footer">
       <div class="footer-left">
@@ -59,7 +62,10 @@ const SAVE_DELAY = 1000;
 
 export default {
   name: 'write',
-  props: { journalList: { type: Array, default: [] } },
+  props: {
+    journalList: { type: Array, default: [] },
+    saveStatus: { type: String, default: 'idle' }
+  },
   data() {
     return {
       journalContent: '',
@@ -69,14 +75,21 @@ export default {
       activeButton: null
     }
   },
+  watch: {
+    saveStatus(newVal) {
+      if (newVal === 'success' || newVal === 'error' || newVal === 'idle') {
+        this.isLoading = false;
+      }
+    }
+  },
   methods: {
     clearText() { this.journalContent = '' },
-    stopLoading() {
-    this.isLoading = false;
-    },
+    stopLoading() { this.isLoading = false; },
+
     saveText() {
       if (!this.journalContent) return;
       this.isLoading = true;
+
       setTimeout(() => {
         const d = new Date();
         const textObj = {
@@ -90,15 +103,14 @@ export default {
         this.clearText();
       }, SAVE_DELAY);
     },
+
     showModal(buttonNumber) {
       this.modalVisible[buttonNumber] = true;
       this.activeButton = buttonNumber;
     },
-   async handleModalCancel(i) {
+    async handleModalCancel(i) {
       this.modalVisible[i] = false;
-      if (this.activeButton === i) {
-        this.activeButton = null;
-      }
+      if (this.activeButton === i) this.activeButton = null;
     },
     async handleModalOk(buttonNumber) {
       this.modalVisible[buttonNumber] = false;
@@ -107,7 +119,7 @@ export default {
         const db = getDatabase();
         const buttonRef = ref(db, 'buttonSelections/' + new Date().getTime());
         await set(buttonRef, {
-          buttonNumber: buttonNumber,
+          buttonNumber,
           timestamp: new Date().toISOString()
         });
       } catch (error) {
@@ -123,13 +135,11 @@ export default {
   max-height: 70vh;
   overflow: auto;
 }
-
 ::v-deep(.ant-modal) {
   width: auto !important;
   max-width: 90vw;
   top: 24px;
 }
-
 ::v-deep(.ant-modal-content) {
   max-width: 90vw;
 }
@@ -182,16 +192,11 @@ export default {
     margin-top: 20px;
     flex: none;
 
-    .footer-left {
-      display: flex;
-      gap: 8px;
-    }
+    .footer-left { display: flex; gap: 8px; }
 
-    .footer-right {
-      .ant-btn {
-        width: 100%;
-        height: 50px;
-      }
+    .footer-right .ant-btn {
+      width: 100%;
+      height: 50px;
     }
   }
 }
