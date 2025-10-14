@@ -127,26 +127,29 @@
 
       <div class="modal-content">
         <div
-          v-if="currentJournal.therapy && currentJournal.therapyApproved === false"
-          class="pending-message"
-          style="margin-top:12px;"
-        >
-          The reflect points are successfully generated, please wait patiently for review.
-        </div>
-        <div
           v-if="currentJournal.therapy && currentJournal.therapyApproved === true"
           class="content-text"
           style="margin-top:12px;"
         >
           {{ modalContent }}
         </div>
+
+        <div
+          v-else-if="currentJournal.therapy"
+          class="pending-message"
+          style="margin-top:12px;"
+        >
+          The reflect points are successfully generated, please wait patiently for review.
+        </div>
+
         <div
           v-else
           class="pending-message"
           style="margin-top:12px;"
         >
-          Analyzing...
+          Please wait for the analysis to be done, and don’t close the tab until it is done
         </div>
+
         <div class="content-rate">
           <div class="content-rate-tip">
             Rate your mood again
@@ -624,11 +627,13 @@ export default {
       }
 
       .content-text {
+        white-space: pre-wrap;
         max-width: 100%;
         flex-wrap: wrap;
         padding: 20px;
         font-size: 16px;
         font-weight: bold;
+        overflow: auto;
       }
     }
 
