@@ -104,7 +104,7 @@
           <div class="img-text">AI-Generated Image</div>
         </div>
         <button class="refresh-fab" @click="refreshCurrent">⟲ Refresh</button>
-        <div class="refresh-caption">check whether the image got approved</div>
+        <div class="refresh-caption"> Click the Refresh button to check whether the image got approved and the reflective questions got approved</div>
       </div>
     </div>
   </div>
@@ -464,7 +464,7 @@ export default {
 .refresh-fab {
   position: fixed;
   right: 190px;
-  bottom: 50px;
+  bottom: 70px;
   z-index: 2000;
   display: inline-flex;
   align-items: center;
@@ -485,8 +485,8 @@ export default {
   position: fixed;
   right: 190px;
   bottom: 24px;
-  width: 280px;
-  text-align: center;
+  width: 400px;
+  text-align: right;
   color: #6b7280;
   font-size: 14px;
   line-height: 1.3;
