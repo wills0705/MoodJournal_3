@@ -56,7 +56,7 @@
               @click="setFace(item, index)"
             />
           </div>
-          <!-- 反馈输入框 -->
+          <!-- feedback -->
           <div class="feedback-container" v-if="currentJournal.therapy">
             <label for="feedback-input">Your Feedback</label>
             <textarea
@@ -79,7 +79,7 @@
             @click="openModal"
             id="openModalBtn"
           >
-            help me rethink
+            help me reflect
           </button>
         </div>
       </div>
@@ -104,10 +104,12 @@
           <div class="img-text">AI-Generated Image</div>
         </div>
         <button class="refresh-fab" @click="refreshCurrent">⟲ Refresh</button>
-        <div class="refresh-caption"> Click the Refresh button to check whether the image got approved and the reflective questions got approved</div>
+        <div class="refresh-caption"> Click Refresh to check whether the image got approved</div>
       </div>
     </div>
   </div>
+
+  <!-- Modal -->
   <div
     class="modal-overlay"
     id="modalOverlay"
@@ -121,19 +123,27 @@
           <div class="therapy-rating-icon">
             <img :src="faceIconUrl(faceList[currentJournal.mood2])" alt="therapy mood" />
           </div>
+          <button class="modal-refresh" @click.stop="refreshCurrent">
+            <span class="refresh-icon">⟲</span> Refresh
+          </button>
         </div>
         <span class="close-btn" @click="closeModal">&times;</span>
       </div>
 
       <div class="modal-content">
+        <!-- APPROVED: show bullets (fallback to plain text) -->
         <div
           v-if="currentJournal.therapy && currentJournal.therapyApproved === true"
           class="content-text"
           style="margin-top:12px;"
         >
-          {{ modalContent }}
+          <ul class="therapy-list" v-if="therapyBullets.length">
+            <li v-for="(q, i) in therapyBullets" :key="i">{{ q }}</li>
+          </ul>
+          <template v-else>{{ modalContent }}</template>
         </div>
 
+        <!-- GENERATED, waiting for RA review -->
         <div
           v-else-if="currentJournal.therapy"
           class="pending-message"
@@ -142,6 +152,7 @@
           The reflect points are successfully generated, please wait patiently for review.
         </div>
 
+        <!-- STILL GENERATING -->
         <div
           v-else
           class="pending-message"
@@ -219,6 +230,23 @@ export default {
       dragOffset: { x: 0, y: 0 },
       modalPosition: { x: 0, y: 0 }
     };
+  },
+  computed: {
+    // Turn "1. ..." or newline-separated text into bullet points
+    therapyBullets() {
+      if (!this.modalContent) return [];
+      const text = String(this.modalContent).replace(/\r/g, '\n').trim();
+
+      // First try splitting by newlines
+      let parts = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+
+      // If everything came as one line like "1. ... 2. ...", split by numbered items
+      if (parts.length <= 1) {
+        parts = text.split(/\s*\d+\.\s*/).map(s => s.trim()).filter(Boolean);
+      }
+
+      return parts;
+    }
   },
   watch: {
     journalList() {
@@ -712,7 +740,32 @@ export default {
 
 .modal-title-container {
   display: flex;
-  gap: 30px;
+  align-items: center;   /* keep icon + button aligned */
+  gap: 12px;     
+}
+
+.modal-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 16px;
+  background: #2d7dfe;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(45,125,254,.25);
+}
+
+.modal-refresh:hover {
+  opacity: .95;
+}
+
+.refresh-icon {
+  display: inline-block;
+  transform: translateY(1px);
+  font-size: 14px;
 }
 
 .therapy-rating-icon img {
@@ -771,6 +824,17 @@ export default {
   border-radius: 8px;
   background-color: #fff;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* bullets inside the scroll box */
+.therapy-list {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+}
+.therapy-list li {
+  margin: 6px 0;
+  line-height: 1.6;
 }
 
 .content-rate {
