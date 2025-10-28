@@ -103,8 +103,6 @@
           </div>
           <div class="img-text">AI-Generated Image</div>
         </div>
-        <button class="refresh-fab" @click="refreshCurrent">⟲ Refresh</button>
-        <div class="refresh-caption"> Click Refresh to check whether the image got approved</div>
       </div>
     </div>
   </div>
@@ -123,9 +121,6 @@
           <div class="therapy-rating-icon">
             <img :src="faceIconUrl(faceList[currentJournal.mood2])" alt="therapy mood" />
           </div>
-          <button class="modal-refresh" @click.stop="refreshCurrent">
-            <span class="refresh-icon">⟲</span> Refresh
-          </button>
         </div>
         <span class="close-btn" @click="closeModal">&times;</span>
       </div>
@@ -489,38 +484,6 @@ export default {
   }
 }
 
-.refresh-fab {
-  position: fixed;
-  right: 190px;
-  bottom: 70px;
-  z-index: 2000;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 18px;
-  background: #2d7dfe;
-  color: #fff;
-  border: none;
-  border-radius: 28px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 10px 24px rgba(45,125,254,.35);
-}
-.refresh-fab:hover { opacity: .95; }
-.refresh-icon { display:inline-block; transform: translateY(1px); }
-
-.refresh-caption {
-  position: fixed;
-  right: 190px;
-  bottom: 24px;
-  width: 400px;
-  text-align: right;
-  color: #6b7280;
-  font-size: 14px;
-  line-height: 1.3;
-  z-index: 2000;
-}
-
 .journal-list {
   height: 100%;
   overflow: hidden;
@@ -742,30 +705,6 @@ export default {
   display: flex;
   align-items: center;   /* keep icon + button aligned */
   gap: 12px;     
-}
-
-.modal-refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 16px;
-  background: #2d7dfe;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 6px 14px rgba(45,125,254,.25);
-}
-
-.modal-refresh:hover {
-  opacity: .95;
-}
-
-.refresh-icon {
-  display: inline-block;
-  transform: translateY(1px);
-  font-size: 14px;
 }
 
 .therapy-rating-icon img {

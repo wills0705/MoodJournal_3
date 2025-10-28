@@ -46,10 +46,12 @@ import Login from './components/Login.vue';
 import { auth, db } from './firebase';
 import {
   collection,
-  getDocs,
   addDoc,
   query,
   orderBy,
+  onSnapshot,
+  where,
+  getDocs
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -65,7 +67,7 @@ export default {
     return {
       journalList: [],
       tabList: [
-        { name: 'Write new',   componentName: 'write' },
+        { name: 'Write new',    componentName: 'write' },
         { name: 'Prev Journal', componentName: 'journal' },
         { name: 'Analytics',    componentName: 'analysis' },
       ],
@@ -73,29 +75,34 @@ export default {
       currentComponent: 'write',
       isAuthenticated: false,
       showSignup: false,
-      saveStatus: 'idle'
+      saveStatus: 'idle',
+      _unsub: null, // holds the live subscription
     };
   },
   created() {
     onAuthStateChanged(auth, (user) => {
+      if (this._unsub) { this._unsub(); this._unsub = null; }
       if (user) {
         this.isAuthenticated = true;
-        this.fetchJournalList();
+        this.startRealtime(user.uid); // live updates with fallback
       } else {
         this.isAuthenticated = false;
         this.journalList = [];
       }
     });
   },
+  beforeUnmount() {
+    if (this._unsub) { this._unsub(); this._unsub = null; }
+  },
   methods: {
     toggleAuthForm() { this.showSignup = !this.showSignup; },
     async logout() {
       try {
         await signOut(auth);
-        this.$message.success('Logged out successfully');
+        this.$message?.success('Logged out successfully');
       } catch (error) {
         console.error('Error logging out:', error);
-        this.$message.error('Failed to log out');
+        this.$message?.error('Failed to log out');
       }
     },
     handleClick(index) {
@@ -103,10 +110,57 @@ export default {
       this.currentComponent = this.tabList[index].componentName;
     },
 
-    async handleUpdate(obj) {
-      // Tell Write.vue we're saving
-      this.saveStatus = 'saving';
+    // ===== Realtime with graceful fallback =====
+    startRealtime(userId) {
+      // Preferred: where(userId) + orderBy(timestamp desc)  (needs composite index)
+      const qRef = query(
+        collection(db, 'journalList'),
+        where('userId', '==', userId),
+        orderBy('timestamp', 'desc')
+      );
+      this._unsub = onSnapshot(
+        qRef,
+        (snap) => {
+          const rows = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          this.journalList = rows; // server-sorted
+        },
+        (err) => {
+          console.warn('onSnapshot error:', err);
+          // Missing composite index -> use fallback
+          if (String(err.code).toLowerCase().includes('failed-precondition')) {
+            this.startRealtimeNoIndex(userId);
+          } else {
+            this.journalList = [];
+          }
+        }
+      );
+    },
 
+    // Fallback: where only, sort on client (no composite index required)
+    startRealtimeNoIndex(userId) {
+      if (this._unsub) { this._unsub(); this._unsub = null; }
+      const qRef = query(
+        collection(db, 'journalList'),
+        where('userId', '==', userId)
+      );
+      this._unsub = onSnapshot(
+        qRef,
+        (snap) => {
+          const rows = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          this.journalList = rows;
+        },
+        (err) => {
+          console.error('onSnapshot fallback error:', err);
+          this.journalList = [];
+        }
+      );
+    },
+
+    async handleUpdate(obj) {
+      this.saveStatus = 'saving';
       try {
         const userId = auth.currentUser.uid;
         obj.userId = userId;
@@ -125,7 +179,7 @@ export default {
         const style_preset = presetMap[obj.buttonNumber] || "digital-art";
         const prompt = `${obj.content}`;
 
-        // Generate image via your Condition-3 backend
+        // Condition-3 backend
         const response = await fetch('https://moodjournal-3-api-isp9.onrender.com/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -143,26 +197,23 @@ export default {
         const blob = await fetched.blob();
         const snapshot = await uploadBytes(storageRef, blob);
         const downloadURL = await getDownloadURL(snapshot.ref);
-
         obj.sdImage = downloadURL;
 
-        // Save entry to Firestore
-        const docRef = await addDoc(collection(db, 'journalList'), obj);
-        obj.id = docRef.id;
+        await addDoc(collection(db, 'journalList'), obj);
+        // No manual unshift — onSnapshot will update UI immediately.
 
-        this.journalList.unshift(obj);
-
-        this.$message.success('Journal entry saved successfully');
+        this.$message?.success('Journal entry saved successfully');
         this.saveStatus = 'success';
         setTimeout(() => (this.saveStatus = 'idle'), 800);
       } catch (error) {
         console.error('Error adding document:', error);
-        this.$message.error('Failed to save journal entry');
+        this.$message?.error('Failed to save journal entry');
         this.saveStatus = 'error';
         setTimeout(() => (this.saveStatus = 'idle'), 1200);
       }
     },
 
+    // (Optional) one-off fetch kept for reference
     async fetchJournalList() {
       try {
         const userId = auth.currentUser.uid;
