@@ -162,8 +162,14 @@ export default {
     async handleUpdate(obj) {
       this.saveStatus = 'saving';
       try {
-        const userId = auth.currentUser.uid;
-        obj.userId = userId;
+        const user = auth.currentUser;
+        if (!user) {
+          this.$message?.error('You must be logged in.');
+          this.saveStatus = 'idle';
+          return;
+        }
+        obj.userId = user.uid;
+        obj.userEmail = user.email;
         obj.timestamp = Date.now();
         obj.mood = 2;
         obj.mood2 = 2;
