@@ -76,12 +76,23 @@ export default {
       isAuthenticated: false,
       showSignup: false,
       saveStatus: 'idle',
-      _unsub: null, // holds the live subscription
+
+      _unsub: null,
+      _prevFlags: new Map(),
+      _ding: null
     };
   },
   created() {
+    // prepare audio
+    this._ding = new Audio('/sounds/notify.wav');
+    this._ding.preload = 'auto';
+    this._ding.volume = 1.0;
+
     onAuthStateChanged(auth, (user) => {
       if (this._unsub) { this._unsub(); this._unsub = null; }
+      // reset transition memory on user switch/sign-out
+      this._prevFlags.clear();
+
       if (user) {
         this.isAuthenticated = true;
         this.startRealtime(user.uid); // live updates with fallback
@@ -110,9 +121,29 @@ export default {
       this.currentComponent = this.tabList[index].componentName;
     },
 
+    playDing() {
+      this._ding?.play().catch(() => {});
+    },
+
+    _checkTransitions(rows) {
+      for (const r of rows) {
+        const key = r.id;
+        const prev = this._prevFlags.get(key) || { img: false, ther: false };
+
+        const imgNow  = r.isApproved === true;
+        const therNow = r.therapyApproved === true;
+
+        // fire on rising edges only
+        if (imgNow && !prev.img)  this.playDing();
+        if (therNow && !prev.ther) this.playDing();
+
+        // store current state
+        this._prevFlags.set(key, { img: imgNow, ther: therNow });
+      }
+    },
+
     // ===== Realtime with graceful fallback =====
     startRealtime(userId) {
-      // Preferred: where(userId) + orderBy(timestamp desc)  (needs composite index)
       const qRef = query(
         collection(db, 'journalList'),
         where('userId', '==', userId),
@@ -123,11 +154,11 @@ export default {
         (snap) => {
           const rows = [];
           snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          this._checkTransitions(rows);
           this.journalList = rows; // server-sorted
         },
         (err) => {
           console.warn('onSnapshot error:', err);
-          // Missing composite index -> use fallback
           if (String(err.code).toLowerCase().includes('failed-precondition')) {
             this.startRealtimeNoIndex(userId);
           } else {
@@ -150,6 +181,7 @@ export default {
           const rows = [];
           snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
           rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          this._checkTransitions(rows);
           this.journalList = rows;
         },
         (err) => {
@@ -206,8 +238,6 @@ export default {
         obj.sdImage = downloadURL;
 
         await addDoc(collection(db, 'journalList'), obj);
-        // No manual unshift — onSnapshot will update UI immediately.
-
         this.$message?.success('Journal entry saved successfully');
         this.saveStatus = 'success';
         setTimeout(() => (this.saveStatus = 'idle'), 800);
