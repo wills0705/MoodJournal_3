@@ -189,10 +189,9 @@ import moodLaugh from '../assets/image/mood-laugh.png'
 export default {
   name: "journal",
   props: {
-    journalList: {
-      type: Array,
-      default: [],
-    },
+    journalList: { type: Array, default: [] },
+    // NEW: bumps whenever Firestore snapshot has changes
+    version: { type: Number, default: 0 },
   },
   data() {
     return {
@@ -208,15 +207,11 @@ export default {
         mood2: 2,
         sdImage: "",
         therapy: "",
+        therapyApproved: undefined,
+        isApproved: undefined,
         feedback: ""
       },
-      faceList: [
-        moodSad,
-        moodFrown,
-        moodNormal,
-        moodSmile,
-        moodLaugh
-      ],
+      faceList: [moodSad, moodFrown, moodNormal, moodSmile, moodLaugh],
       currentFace: "",
       fallbackCat: "",
       modalContent: null,
@@ -227,30 +222,33 @@ export default {
     };
   },
   computed: {
-    // Turn "1. ..." or newline-separated text into bullet points
     therapyBullets() {
       if (!this.modalContent) return [];
       const text = String(this.modalContent).replace(/\r/g, '\n').trim();
-
-      // First try splitting by newlines
       let parts = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
-
-      // If everything came as one line like "1. ... 2. ...", split by numbered items
       if (parts.length <= 1) {
         parts = text.split(/\s*\d+\.\s*/).map(s => s.trim()).filter(Boolean);
       }
-
       return parts;
     }
   },
   watch: {
-    journalList() {
+    journalList() { this.filterJournal(); },
+    // NEW: when parent bumps version, resync current item from latest list
+    version() {
       this.filterJournal();
+      if (this.currentJournal?.id) {
+        const latest = this.journalList.find(j => j.id === this.currentJournal.id);
+        if (latest) {
+          this.currentJournal = { ...this.currentJournal, ...latest };
+          if (typeof latest.mood === 'number' && latest.mood >= 0 && latest.mood < this.faceList.length) {
+            this.currentFace = this.faceIconUrl(this.faceList[latest.mood]);
+          }
+        }
+      }
     },
     $route(to, from) {
-      if (to.path !== from.path) {
-        this.closeModal();
-      }
+      if (to.path !== from.path) this.closeModal();
     }
   },
   methods: {
@@ -277,14 +275,12 @@ export default {
         this.updateJournalMood('mood', index);
       }
     },
-
     setFace1(item, index) {
       if (this.currentJournal.mood2 !== index) {
         this.currentJournal.mood2 = index;
         this.updateJournalMood('mood2', index);
       }
     },
-
     async updateJournalMood(field, value) {
       if (!this.currentJournal.id || !['mood', 'mood2'].includes(field)) return;
       try {
@@ -300,9 +296,7 @@ export default {
       if (!this.currentJournal.id) return;
       try {
         const docRef = doc(db, "journalList", this.currentJournal.id);
-        await updateDoc(docRef, { 
-          feedback: this.currentJournal.feedback 
-        });
+        await updateDoc(docRef, { feedback: this.currentJournal.feedback });
         this.$message && this.$message.success("Feedback saved!");
       } catch (err) {
         console.error("Error saving feedback to Firestore:", err);
@@ -311,12 +305,9 @@ export default {
 
     async openModal() {
       this.isModalActive = true;
-      this.modalPosition = {
-        x: window.innerWidth / 2 - 250,
-        y: window.innerHeight / 2 - 200
-      };
+      this.modalPosition = { x: window.innerWidth / 2 - 250, y: window.innerHeight / 2 - 200 };
       this.updateModalPosition();
-      
+
       if (this.currentJournal.therapy) {
         this.modalContent = this.currentJournal.therapy;
         return;
@@ -334,7 +325,6 @@ export default {
         this.modalContent = "Failed to fetch therapy.";
       }
     },
-    
     async saveTherapyToFirestore(reply) {
       if (!this.currentJournal.id) return;
       try {
@@ -344,22 +334,20 @@ export default {
         console.error("Error saving therapy to Firestore:", err);
       }
     },
-    
+
     closeModal() {
       this.isModalActive = false;
       this.modalContent = "";
       document.removeEventListener('mousemove', this.handleDrag);
       document.removeEventListener('mouseup', this.stopDrag);
     },
-    
     handleImageError(e) {
       e.target.src = this.fallbackCat;
     },
-    
     faceIconUrl(path) {
       return new URL(path, import.meta.url).href;
     },
-    
+
     showJournalDetail(journal) {
       this.currentJournal = { ...journal };
       if (journal.mood >= 0 && journal.mood < this.faceList.length) {
@@ -368,18 +356,16 @@ export default {
         this.currentFace = this.faceIconUrl("../assets/image/mood-normal.png");
       }
     },
-    
+
     filterJournal() {
-      this.list = this.journalList.map((item) => {
-        return {
-          ...item,
-          enDate: this.formatEnDate(item.currentDate),
-          weekDay: this.getWeekDay(item.currentDate),
-          feedback: item.feedback || ""
-        };
-      });
+      this.list = this.journalList.map((item) => ({
+        ...item,
+        enDate: this.formatEnDate(item.currentDate),
+        weekDay: this.getWeekDay(item.currentDate),
+        feedback: item.feedback || ""
+      }));
     },
-    
+
     getWeekDay(ymd) {
       const [y, m, d] = String(ymd).split('-').map(Number);
       const dt = new Date(y, m - 1, d);
@@ -397,35 +383,26 @@ export default {
       if (e.target.classList.contains('modal-header')) {
         this.isDragging = true;
         const rect = this.$refs.modalCard.getBoundingClientRect();
-        this.dragOffset = {
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top
-        };
+        this.dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
         document.addEventListener('mousemove', this.handleDrag);
         document.addEventListener('mouseup', this.stopDrag);
       }
     },
-
     handleDrag(e) {
       if (this.isDragging) {
-        this.modalPosition = {
-          x: e.clientX - this.dragOffset.x,
-          y: e.clientY - this.dragOffset.y
-        };
+        this.modalPosition = { x: e.clientX - this.dragOffset.x, y: e.clientY - this.dragOffset.y };
         this.updateModalPosition();
       }
     },
-
     stopDrag() {
       this.isDragging = false;
       document.removeEventListener('mousemove', this.handleDrag);
       document.removeEventListener('mouseup', this.stopDrag);
     },
-
     updateModalPosition() {
       if (this.$refs.modalCard) {
         this.$refs.modalCard.style.left = `${this.modalPosition.x}px`;
-        this.$refs.modalCard.style.top = `${this.modalPosition.y}px`;
+        this.$refs.modalCard.style.top  = `${this.modalPosition.y}px`;
       }
     }
   },

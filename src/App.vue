@@ -31,6 +31,7 @@
             <component
               :is="currentComponent"
               :journalList="journalList"
+              :version="dataVersion"
               :saveStatus="saveStatus"
               @updateJournal="handleUpdate"
             />
@@ -48,7 +49,7 @@ import Analysis from './views/Analysis';
 
 import Signup from './components/Signup.vue';
 import Login from './components/Login.vue';
-import PolicyGate from './components/PolicyGate.vue'; // NEW
+import PolicyGate from './components/PolicyGate.vue';
 
 import { auth, db } from './firebase';
 import {
@@ -92,13 +93,15 @@ export default {
       _prevFlags: new Map(),
       _ding: null,
 
-      // Policy gate state
+      // policy gate
       showPolicyGate: false,
       POLICY_DOCS: [
-        { title: 'List of Mental Health Services Available 1',        url: '/policies/mentalhealth.pdf' },
-        { title: 'Research Consent',      url: '/policies/REB_Informed_Consent.pdf' }
+        { title: 'List of Mental Health Services Available', url: '/policies/mentalhealth.pdf' },
+        { title: 'Research Consent',                         url: '/policies/REB_Informed_Consent.pdf' }
       ],
       _currentUid: null,
+
+      dataVersion: 0,
     };
   },
   created() {
@@ -110,6 +113,7 @@ export default {
     onAuthStateChanged(auth, async (user) => {
       if (this._unsub) { this._unsub(); this._unsub = null; }
       this._prevFlags.clear();
+      this.dataVersion = 0;
 
       if (user) {
         this.isAuthenticated = true;
@@ -194,7 +198,7 @@ export default {
       }
     },
 
-    // ===== Realtime with graceful fallback =====
+    // ===== Realtime with graceful fallback (+ version bump) =====
     startRealtime(userId) {
       const qRef = query(
         collection(db, 'journalList'),
@@ -208,6 +212,9 @@ export default {
           snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
           this._checkTransitions(rows);
           this.journalList = rows; // server-sorted
+
+          const changedCount = snap.docChanges().length;
+          if (changedCount > 0) this.dataVersion++;
         },
         (err) => {
           console.warn('onSnapshot error:', err);
@@ -232,6 +239,9 @@ export default {
           rows.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
           this._checkTransitions(rows);
           this.journalList = rows;
+
+          const changedCount = snap.docChanges().length;
+          if (changedCount > 0) this.dataVersion++;
         },
         (err) => {
           console.error('onSnapshot fallback error:', err);
@@ -251,7 +261,7 @@ export default {
           return;
         }
 
-        // ---- Guards: need content + chosen style button ----
+        // Guards: need content + chosen style
         const content = (obj.content || '').trim();
         if (!content) {
           this.$message?.warning?.('Please write your journal content first.');
@@ -279,18 +289,18 @@ export default {
           return;
         }
 
-        // ---- Build Firestore payload (explicit pending flags) ----
+        // explicit pending flags
         obj.userId = user.uid;
         obj.userEmail = user.email || null;
         obj.timestamp = Date.now();
         obj.mood = 2;
         obj.mood2 = 2;
         obj.sdImage = "";
-        obj.isApproved = false;       // image approval pending
-        obj.therapyApproved = false;  // therapy approval pending
+        obj.isApproved = false;
+        obj.therapyApproved = false;
         obj.content = content;
 
-        // ---- Generate image via Condition-3 backend ----
+        // Condition-3 backend
         const prompt = content;
         const response = await fetch('https://moodjournal-3-api-isp9.onrender.com/api/generate-image', {
           method: 'POST',
@@ -302,7 +312,7 @@ export default {
         const data = await response.json();
         const imageUrlOnBackend = `https://moodjournal-3-api-isp9.onrender.com${data.image_url}`;
 
-        // ---- Upload to Firebase Storage ----
+        // Upload to Firebase Storage
         const storage = getStorage();
         const storageRef = ref(storage, `generated_images/${Date.now()}.jpg`);
         const fetched = await fetch(imageUrlOnBackend);

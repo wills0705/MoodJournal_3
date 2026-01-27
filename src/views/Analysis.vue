@@ -36,10 +36,16 @@
             <div class="mood-item" v-for="(_text, ind) in moodList" :key="ind">
               <div
                 :class="['mood-item-img', dateMoodList[index] && dateMoodList[index].currentDate === currentFormatDate ? 'active-img' : '']"
-                v-if="dateMoodList[index] && dateMoodList[index].mood === moodList.length - ind  - 1 && dateMoodList[index].currentDate === item.fullDate"
-                :ref="dateMoodList[index] && dateMoodList[index].mood === moodList.length - ind  - 1 && dateMoodList[index].currentDate === item.fullDate ? `anchor${index}` : ''"
-                @click="showContent(dateMoodList[index])">
-                <img :src="dateMoodList[index].sdImage" alt="wait approve" class="mood-img">
+                v-if="dateMoodList[index] && dateMoodList[index].mood === moodList.length - ind - 1 && dateMoodList[index].currentDate === item.fullDate"
+                :ref="dateMoodList[index] && dateMoodList[index].mood === moodList.length - ind - 1 && dateMoodList[index].currentDate === item.fullDate ? `anchor${index}` : ''"
+                @click="showContent(dateMoodList[index])"
+              >
+                <template v-if="dateMoodList[index].isApproved === true && dateMoodList[index].sdImage">
+                  <img :src="dateMoodList[index].sdImage" alt="approved" class="mood-img">
+                </template>
+                <template v-else>
+                  <span style="font-size:12px; color:#888; text-align:center; padding:6px;">wait approve</span>
+                </template>
               </div>
             </div>
           </div>
@@ -53,76 +59,56 @@
     </div>
   </div>
 </template>
+
+
 <script>
 import { notification } from 'ant-design-vue';
 import { LeftCircleOutlined, RightCircleOutlined } from '@ant-design/icons-vue';
 import LeaderLine from 'leader-line-vue'
 import { getDateInfo, monthMap, getWeekDates, formatDate } from '../lib/util'
 
-// 获取当天的年，月，日
 const dateInfo = getDateInfo(new Date());
 export default {
   name: 'analysis',
-  components: {
-    LeftCircleOutlined,
-    RightCircleOutlined,
-  },
+  components: { LeftCircleOutlined, RightCircleOutlined },
   props: {
-    journalList: {
-      type: Array,
-      default: []
-    }
+    journalList: { type: Array, default: [] },
+    // NEW: force refresh on Firestore changes
+    version: { type: Number, default: 0 },
   },
-  created() {
-    this.handleMoodList();
-  },
+  created() { this.handleMoodList(); },
   data() {
     return {
-      // 当前月份
       currentMonth: monthMap[dateInfo.month - 1],
-      // 当前年份
       currentYear: dateInfo.year,
-      // 当前日期,yyyy-mm-dd
       currentDate: dateInfo.fullDate,
-      // 当前的年月日， yyyy-mm-dd
       currentFormatDate: formatDate(new Date()),
-      // 获取当前一周的起止日期
       weekList: getWeekDates(0),
-      // 心情日记列表，status = 0 = great, 1= good, 2= neutral, 3=mooday, 4=down
-      dateMoodList: [
-
-      ],
-      // 心情文本
-      moodList: [
-        'Great',
-        'Good',
-        'Neutral',
-        'Mooday',
-        'Down'
-      ],
-      // 弹窗显示隐藏，展示日记内容
+      dateMoodList: [],
+      moodList: ['Great','Good','Neutral','Mooday','Down'],
       modalVisible: false,
-      // 当前展示的日记内容
       currentContent: '',
-      // 周的索引，0=当前周，1=下一周，-1=上一周
       weekIndex: 0,
-      // 默认连线是否显示
       lineVisible: true,
-      // 连线集合
       lineArr: [],
     }
   },
+  watch: {
+    journalList: { handler() { this.refreshGrid(); }, deep: true },
+    version() { this.refreshGrid(); }
+  },
   methods: {
-    // flag > 1 = 下一周， flag < 1 = 上一周
+    refreshGrid() {
+      // Recompute mood list and redraw lines
+      this.handleMoodList();
+      this.$nextTick(() => {
+        this.destroyLine();
+        setTimeout(() => this.handleLine(), 10);
+      });
+    },
     handleWeekChange(flag) {
-      if (flag > 0) {
-        if (this.weekIndex === 0) {
-          return;
-        }
-        this.weekIndex++
-      } else {
-        this.weekIndex--
-      }
+      if (flag > 0) { if (this.weekIndex === 0) return; this.weekIndex++; }
+      else { this.weekIndex--; }
       this.destroyLine();
       this.lineVisible = false;
       this.$nextTick(() => {
@@ -130,27 +116,21 @@ export default {
         this.setCurrentMonthAndYear();
         this.handleMoodList();
         this.lineVisible = true;
-        setTimeout(() => {
-          this.handleLine();
-        }, 10)
+        setTimeout(() => { this.handleLine(); }, 10)
       })
     },
     handleMoodList() {
       this.dateMoodList = new Array(7).fill(null);
       this.weekList.forEach((item, index) => {
         const obj = this.journalList.find(journal => journal.currentDate === item.fullDate);
-        if (obj) {
-          this.dateMoodList[index] = obj;
-        }
+        if (obj) this.dateMoodList[index] = obj;
       })
     },
-    // 设置显示的年月
     setCurrentMonthAndYear() {
-      const dateInfo = getDateInfo(this.weekList[0].fullDate);
-      this.currentMonth = monthMap[dateInfo.month - 1];
-      this.currentYear = dateInfo.year;
+      const di = getDateInfo(this.weekList[0].fullDate);
+      this.currentMonth = monthMap[di.month - 1];
+      this.currentYear = di.year;
     },
-    // 打开右下角弹窗，并展示日记内容
     showContent(obj) {
       if (this.modalVisible) {
         this.currentContent = obj.content;
@@ -163,99 +143,49 @@ export default {
         description: () => this.currentContent,
         placement: 'bottomRight',
         duration: 0,
-        onClick: () => {
-          this.modalVisible = false;
-        },
+        onClick: () => { this.modalVisible = false; },
       });
     },
-    // 使用leader-line-vue处理连线
     handleLine() {
       const arr = Object.keys(this.$refs)
       arr.forEach((item, index) => {
         if (arr[index] && arr[index + 1] && this.$refs[arr[index]][0] && this.$refs[arr[index + 1]][0]) {
-          let line = LeaderLine.setLine(this.$refs[item][0], this.$refs[arr[index + 1]][0], {
+          const line = LeaderLine.setLine(this.$refs[item][0], this.$refs[arr[index + 1]][0], {
             startPlug: 'behind',
             endPlug: 'behind',
             color: '#333',
             path: 'straight',
             size: 1,
-            startSocket: 'right', // 自动定位起始元素的中心
-            endSocket: 'left',   // 自动定位结束元素的中心
+            startSocket: 'right',
+            endSocket: 'left',
             startSocketGravity: 100
           })
           this.lineArr.push(line)
         }
       })
     },
-    handleLinePosition(arr) {
-      let result = [];
-      arr.forEach((item, index) => {
-        let p = ['left', 'left']
-        const val = this.dateMoodList[index + 1].status - this.dateMoodList[index]
-        if (index === 0) {
-          switch (val) {
-            case 0:
-              p = ['right', 'left']
-            case 1 || 2:
-              p = ['left', 'left']
-            case 3 || 4:
-              p = ['bottom', 'left']
-            case -4:
-              p = ['top', 'left']
-            case -1:
-              p = ['right', 'top']
-            case -2:
-              p = ['top', 'top']
-          }
-        } else {
-          switch (val) {
-            case 0:
-              p = ['right', 'left']
-            case 1 || 2:
-              p = ['left', 'left']
-            case 3 || 4:
-              p = ['bottom', 'left']
-            case -4:
-              p = ['top', 'left']
-          }
-        }
-
-      })
-    },
-    // 切换tab时，显示或者隐藏连线
     setLineVisible(visible) {
       const arr = document.querySelectorAll('.leader-line')
       if (arr && arr.length) {
-        arr.forEach(item => {
-          item.style.display = visible ? 'block' : 'none'
-        })
+        arr.forEach(item => { item.style.display = visible ? 'block' : 'none' })
       }
     },
     destroyLine() {
-      this.lineArr.forEach(item => {
-        item.remove()
-      })
+      this.lineArr.forEach(item => item.remove());
       this.lineArr = []
     }
   },
-  activated() {
-    this.setLineVisible(true)
-  },
-  deactivated() {
-    this.setLineVisible(false)
-  },
+  activated() { this.setLineVisible(true) },
+  deactivated() { this.setLineVisible(false) },
   mounted() {
     this.handleLine();
     this.setLineVisible(true)
   },
-  unmounted() {
-    this.setLineVisible(false)
-  },
-  beforeDestroy() {
-    this.destroyLine();
-  }
+  unmounted() { this.setLineVisible(false) },
+  beforeDestroy() { this.destroyLine(); }
 };
 </script>
+
 <style lang="less" scoped>
 .analysis-journal {
   height: 100%;
