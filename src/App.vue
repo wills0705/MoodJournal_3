@@ -1,25 +1,31 @@
 <template>
   <div class="mood-journal-app">
     <div class="mood-journal-app-content">
-      <!-- Authentication Components -->
+      <!-- Auth -->
       <div v-if="!isAuthenticated">
         <Signup v-if="showSignup" @switch-auth="toggleAuthForm" />
         <Login v-else @switch-auth="toggleAuthForm" />
       </div>
 
-      <!-- Main App Components -->
+      <!-- First-time policy gate -->
+      <div v-else-if="showPolicyGate" class="app-container">
+        <PolicyGate :docs="POLICY_DOCS" @accepted="handlePolicyCompleted" />
+      </div>
+
+      <!-- Main App -->
       <div class="app-container" v-else>
         <div class="mood-journal-app-content-header">
           <div
-            :class="['tab-item', activeIndex === index ? 'active-item' : '']"
             v-for="(item, index) in tabList"
             :key="index"
+            :class="['tab-item', activeIndex === index ? 'active-item' : '']"
             @click="handleClick(index)"
           >
             {{ item.name }}
           </div>
           <button @click="logout" class="logout-button">Log Out</button>
         </div>
+
         <div class="mood-journal-app-content-content">
           <keep-alive exclude="analysis">
             <component
@@ -42,6 +48,7 @@ import Analysis from './views/Analysis';
 
 import Signup from './components/Signup.vue';
 import Login from './components/Login.vue';
+import PolicyGate from './components/PolicyGate.vue'; // NEW
 
 import { auth, db } from './firebase';
 import {
@@ -51,7 +58,11 @@ import {
   orderBy,
   onSnapshot,
   where,
-  getDocs
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -62,7 +73,7 @@ import {
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default {
-  components: { Write, Journal, Analysis, Signup, Login },
+  components: { Write, Journal, Analysis, Signup, Login, PolicyGate },
   data() {
     return {
       journalList: [],
@@ -79,7 +90,15 @@ export default {
 
       _unsub: null,
       _prevFlags: new Map(),
-      _ding: null
+      _ding: null,
+
+      // Policy gate state
+      showPolicyGate: false,
+      POLICY_DOCS: [
+        { title: 'List of Mental Health Services Available 1',        url: '/policies/mentalhealth.pdf' },
+        { title: 'Research Consent',      url: '/policies/REB_Informed_Consent.pdf' }
+      ],
+      _currentUid: null,
     };
   },
   created() {
@@ -88,17 +107,25 @@ export default {
     this._ding.preload = 'auto';
     this._ding.volume = 1.0;
 
-    onAuthStateChanged(auth, (user) => {
+    onAuthStateChanged(auth, async (user) => {
       if (this._unsub) { this._unsub(); this._unsub = null; }
-      // reset transition memory on user switch/sign-out
       this._prevFlags.clear();
 
       if (user) {
         this.isAuthenticated = true;
-        this.startRealtime(user.uid); // live updates with fallback
+        this._currentUid = user.uid;
+
+        // Check first-time policy acknowledgment
+        const acknowledged = await this.checkPolicyAck(user.uid);
+        this.showPolicyGate = !acknowledged;
+
+        // Only start realtime after gate is cleared
+        if (acknowledged) this.startRealtime(user.uid);
       } else {
         this.isAuthenticated = false;
         this.journalList = [];
+        this._currentUid = null;
+        this.showPolicyGate = false;
       }
     });
   },
@@ -106,6 +133,33 @@ export default {
     if (this._unsub) { this._unsub(); this._unsub = null; }
   },
   methods: {
+    // ---------- Policy Gate ----------
+    async checkPolicyAck(uid) {
+      try {
+        const uref = doc(db, 'users', uid);
+        const snap = await getDoc(uref);
+        if (!snap.exists()) return false;
+        return !!snap.data().policyAcknowledged;
+      } catch (e) {
+        console.warn('checkPolicyAck error:', e);
+        return false;
+      }
+    },
+    async handlePolicyCompleted() {
+      try {
+        const uid = this._currentUid || auth.currentUser?.uid;
+        if (!uid) return;
+        const uref = doc(db, 'users', uid);
+        await setDoc(uref, { policyAcknowledged: true, policyAckAt: serverTimestamp() }, { merge: true });
+        this.showPolicyGate = false;
+        this.startRealtime(uid); // now safe to enter app
+      } catch (e) {
+        console.error('Failed to store policy ack:', e);
+        this.$message?.error('Could not complete policy step, please try again.');
+      }
+    },
+
+    // ---------- UI ----------
     toggleAuthForm() { this.showSignup = !this.showSignup; },
     async logout() {
       try {
@@ -133,11 +187,9 @@ export default {
         const imgNow  = r.isApproved === true;
         const therNow = r.therapyApproved === true;
 
-        // fire on rising edges only
         if (imgNow && !prev.img)  this.playDing();
         if (therNow && !prev.ther) this.playDing();
 
-        // store current state
         this._prevFlags.set(key, { img: imgNow, ther: therNow });
       }
     },
@@ -171,10 +223,7 @@ export default {
     // Fallback: where only, sort on client (no composite index required)
     startRealtimeNoIndex(userId) {
       if (this._unsub) { this._unsub(); this._unsub = null; }
-      const qRef = query(
-        collection(db, 'journalList'),
-        where('userId', '==', userId)
-      );
+      const qRef = query(collection(db, 'journalList'), where('userId', '==', userId));
       this._unsub = onSnapshot(
         qRef,
         (snap) => {
@@ -191,6 +240,7 @@ export default {
       );
     },
 
+    // ---------- Save entry ----------
     async handleUpdate(obj) {
       this.saveStatus = 'saving';
       try {
@@ -200,24 +250,48 @@ export default {
           this.saveStatus = 'idle';
           return;
         }
-        obj.userId = user.uid;
-        obj.userEmail = user.email;
-        obj.timestamp = Date.now();
-        obj.mood = 2;
-        obj.mood2 = 2;
-        obj.sdImage = "";
+
+        // ---- Guards: need content + chosen style button ----
+        const content = (obj.content || '').trim();
+        if (!content) {
+          this.$message?.warning?.('Please write your journal content first.');
+          this.saveStatus = 'idle';
+          return;
+        }
+        if (!obj.buttonNumber) {
+          this.$message?.warning?.('Please choose an image style before saving.');
+          this.saveStatus = 'idle';
+          return;
+        }
 
         const presetMap = {
           1: "line-art",
           2: "comic-book",
           3: "pixel-art",
           4: "analog-film",
-          5: "neon-punk"
+          5: "neon-punk",
+          6: "digital-art",
         };
-        const style_preset = presetMap[obj.buttonNumber] || "digital-art";
-        const prompt = `${obj.content}`;
+        const style_preset = presetMap[obj.buttonNumber];
+        if (!style_preset) {
+          this.$message?.error('Invalid style selection. Please pick a style again.');
+          this.saveStatus = 'idle';
+          return;
+        }
 
-        // Condition-3 backend
+        // ---- Build Firestore payload (explicit pending flags) ----
+        obj.userId = user.uid;
+        obj.userEmail = user.email || null;
+        obj.timestamp = Date.now();
+        obj.mood = 2;
+        obj.mood2 = 2;
+        obj.sdImage = "";
+        obj.isApproved = false;       // image approval pending
+        obj.therapyApproved = false;  // therapy approval pending
+        obj.content = content;
+
+        // ---- Generate image via Condition-3 backend ----
+        const prompt = content;
         const response = await fetch('https://moodjournal-3-api-isp9.onrender.com/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -228,7 +302,7 @@ export default {
         const data = await response.json();
         const imageUrlOnBackend = `https://moodjournal-3-api-isp9.onrender.com${data.image_url}`;
 
-        // Upload to Firebase Storage
+        // ---- Upload to Firebase Storage ----
         const storage = getStorage();
         const storageRef = ref(storage, `generated_images/${Date.now()}.jpg`);
         const fetched = await fetch(imageUrlOnBackend);
