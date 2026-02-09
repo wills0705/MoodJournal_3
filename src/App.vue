@@ -15,15 +15,20 @@
       <!-- Main App -->
       <div class="app-container" v-else>
         <div class="mood-journal-app-content-header">
-          <div
-            v-for="(item, index) in tabList"
-            :key="index"
-            :class="['tab-item', activeIndex === index ? 'active-item' : '']"
-            @click="handleClick(index)"
-          >
-            {{ item.name }}
+          <div class="header-brand">Mindful</div>
+
+          <div class="header-nav">
+            <div
+              v-for="(item, index) in tabList"
+              :key="index"
+              :class="['nav-item', activeIndex === index ? 'active' : '']"
+              @click="handleClick(index)"
+            >
+              {{ item.name }}
+            </div>
+
+            <button @click="logout" class="logout-button">Log Out</button>
           </div>
-          <button @click="logout" class="logout-button">Log Out</button>
         </div>
 
         <div class="mood-journal-app-content-content">
@@ -65,12 +70,7 @@ import {
   setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import {
-  getStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL
-} from "firebase/storage";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default {
@@ -79,9 +79,9 @@ export default {
     return {
       journalList: [],
       tabList: [
-        { name: 'Write new',    componentName: 'write' },
-        { name: 'Prev Journal', componentName: 'journal' },
-        { name: 'Analytics',    componentName: 'analysis' },
+        { name: 'Write',       componentName: 'write' },
+        { name: 'My Journals', componentName: 'journal' },
+        { name: 'Analytics',   componentName: 'analysis' },
       ],
       activeIndex: 0,
       currentComponent: 'write',
@@ -93,7 +93,6 @@ export default {
       _prevFlags: new Map(),
       _ding: null,
 
-      // policy gate
       showPolicyGate: false,
       POLICY_DOCS: [
         { title: 'List of Mental Health Services Available', url: '/policies/mentalhealth.pdf' },
@@ -105,7 +104,6 @@ export default {
     };
   },
   created() {
-    // prepare audio
     this._ding = new Audio('/sounds/notify.wav');
     this._ding.preload = 'auto';
     this._ding.volume = 1.0;
@@ -119,11 +117,9 @@ export default {
         this.isAuthenticated = true;
         this._currentUid = user.uid;
 
-        // Check first-time policy acknowledgment
         const acknowledged = await this.checkPolicyAck(user.uid);
         this.showPolicyGate = !acknowledged;
 
-        // Only start realtime after gate is cleared
         if (acknowledged) this.startRealtime(user.uid);
       } else {
         this.isAuthenticated = false;
@@ -137,7 +133,6 @@ export default {
     if (this._unsub) { this._unsub(); this._unsub = null; }
   },
   methods: {
-    // ---------- Policy Gate ----------
     async checkPolicyAck(uid) {
       try {
         const uref = doc(db, 'users', uid);
@@ -156,14 +151,13 @@ export default {
         const uref = doc(db, 'users', uid);
         await setDoc(uref, { policyAcknowledged: true, policyAckAt: serverTimestamp() }, { merge: true });
         this.showPolicyGate = false;
-        this.startRealtime(uid); // now safe to enter app
+        this.startRealtime(uid);
       } catch (e) {
         console.error('Failed to store policy ack:', e);
         this.$message?.error('Could not complete policy step, please try again.');
       }
     },
 
-    // ---------- UI ----------
     toggleAuthForm() { this.showSignup = !this.showSignup; },
     async logout() {
       try {
@@ -191,14 +185,13 @@ export default {
         const imgNow  = r.isApproved === true;
         const therNow = r.therapyApproved === true;
 
-        if (imgNow && !prev.img)  this.playDing();
+        if (imgNow && !prev.img) this.playDing();
         if (therNow && !prev.ther) this.playDing();
 
         this._prevFlags.set(key, { img: imgNow, ther: therNow });
       }
     },
 
-    // ===== Realtime with graceful fallback (+ version bump) =====
     startRealtime(userId) {
       const qRef = query(
         collection(db, 'journalList'),
@@ -211,7 +204,7 @@ export default {
           const rows = [];
           snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
           this._checkTransitions(rows);
-          this.journalList = rows; // server-sorted
+          this.journalList = rows;
 
           const changedCount = snap.docChanges().length;
           if (changedCount > 0) this.dataVersion++;
@@ -227,7 +220,6 @@ export default {
       );
     },
 
-    // Fallback: where only, sort on client (no composite index required)
     startRealtimeNoIndex(userId) {
       if (this._unsub) { this._unsub(); this._unsub = null; }
       const qRef = query(collection(db, 'journalList'), where('userId', '==', userId));
@@ -250,7 +242,6 @@ export default {
       );
     },
 
-    // ---------- Save entry ----------
     async handleUpdate(obj) {
       this.saveStatus = 'saving';
       try {
@@ -261,7 +252,13 @@ export default {
           return;
         }
 
-        // Guards: need content + chosen style
+        const title = (obj.title || '').trim();
+        if (!title) {
+          this.$message?.warning?.('Please enter a title.');
+          this.saveStatus = 'idle';
+          return;
+        }
+
         const content = (obj.content || '').trim();
         if (!content) {
           this.$message?.warning?.('Please write your journal content first.');
@@ -289,7 +286,6 @@ export default {
           return;
         }
 
-        // explicit pending flags
         obj.userId = user.uid;
         obj.userEmail = user.email || null;
         obj.timestamp = Date.now();
@@ -298,9 +294,9 @@ export default {
         obj.sdImage = "";
         obj.isApproved = false;
         obj.therapyApproved = false;
+        obj.title = title;
         obj.content = content;
 
-        // Condition-3 backend
         const prompt = content;
         const response = await fetch('https://moodjournal-3-api-isp9.onrender.com/api/generate-image', {
           method: 'POST',
@@ -312,7 +308,6 @@ export default {
         const data = await response.json();
         const imageUrlOnBackend = `https://moodjournal-3-api-isp9.onrender.com${data.image_url}`;
 
-        // Upload to Firebase Storage
         const storage = getStorage();
         const storageRef = ref(storage, `generated_images/${Date.now()}.jpg`);
         const fetched = await fetch(imageUrlOnBackend);
@@ -333,7 +328,6 @@ export default {
       }
     },
 
-    // (Optional) one-off fetch kept for reference
     async fetchJournalList() {
       try {
         const userId = auth.currentUser.uid;
@@ -372,34 +366,46 @@ export default {
       flex: none;
       display: flex;
       align-items: center;
-      justify-content: space-around;
-
-      .tab-item {
-        padding: 4px 20px;
-        border-radius: 12px;
-        transition: font-size 0.1s ease;
-        cursor: pointer;
-      }
-
-      .active-item {
-        font-size: 18px;
-        font-weight: bold;
-        color: green;
-        background-color: #99CC99;
-      }
+      justify-content: space-between;
+      padding: 6px 4px;
+      border-bottom: 1px solid #e5e7eb;
     }
 
-    &-content { flex: auto; overflow: hidden; margin-top: 20px; }
+    &-content { flex: auto; overflow: hidden; margin-top: 12px; }
   }
 }
 
+.header-brand {
+  font-size: 25px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.nav-item {
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.nav-item.active {
+  color: #111827;
+  font-weight: 700;
+}
+
 .logout-button {
-  margin-left: auto;
-  padding: 4px 12px;
-  background-color: #f44336;
+  margin-left: 10px;
+  padding: 8px 14px;
+  background-color: #9e9e9e;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
 }
 </style>

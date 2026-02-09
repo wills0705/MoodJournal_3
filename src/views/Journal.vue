@@ -1,13 +1,11 @@
 <template>
   <div class="journal-list">
+    <!-- Left list -->
     <div class="journal-list-list">
       <div
-        :class="[
-          'list-item',
-          currentJournal.timestamp === item.timestamp ? 'active-item' : '',
-        ]"
         v-for="(item, index) in list"
         :key="index"
+        :class="['list-item', currentJournal.timestamp === item.timestamp ? 'active-item' : '']"
         @click="showJournalDetail(item)"
       >
         <div class="list-item-title">
@@ -19,13 +17,15 @@
       </div>
     </div>
 
+    <!-- Content -->
     <div class="journal-list-content" v-if="currentJournal.content">
-      <!-- Left Panel: Journal Info -->
+      <!-- Middle panel: Journal + mood -->
       <div class="journal-list-content-left">
         <div class="content-title">
           <div class="content-title-text">
-            <div class="month">{{ currentJournal.enDate.slice(0, -5) }}</div>
+            <div class="month">{{ currentJournal.title }}</div>
             <div class="week">
+              {{ currentJournal.enDate.slice(0, -5) }},
               {{ currentJournal.enDate.slice(-4) }},
               {{ currentJournal.weekDay }}
             </div>
@@ -36,19 +36,24 @@
         </div>
 
         <div class="content-container">
-          <div class="content-container-title">
-            {{ currentJournal.title }}
-          </div>
           <div class="content-container-content">
             {{ currentJournal.content }}
           </div>
+        </div>
+
+        <div class="your-reflection" v-if="currentJournal.therapy">
+          <div class="your-reflection-title">Your Reflection</div>
+          <textarea
+            v-model="currentJournal.feedback"
+            @blur="saveFeedback"
+            placeholder="Write your reflection here…"
+          ></textarea>
         </div>
 
         <div class="content-rate">
           <div class="content-rate-tip">Rate your mood today</div>
           <div class="content-rate-icon">
             <img
-              style="width: 50px; height: 50px"
               v-for="(item, index) in faceList"
               :key="index"
               :src="faceIconUrl(item)"
@@ -56,118 +61,64 @@
               @click="setFace(item, index)"
             />
           </div>
-          <!-- feedback -->
-          <div class="feedback-container" v-if="currentJournal.therapy">
-            <label for="feedback-input">Your Feedback</label>
-            <textarea
-              id="feedback-input"
-              v-model="currentJournal.feedback"
-              @blur="saveFeedback"
-              placeholder="Please use the questions to reflect..."
-            ></textarea>
-          </div>
-          <button
-            style="
-              padding: 10px 20px;
-              background-color: #007bff;
-              color: white;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-              margin-top: 10px;
-            "
-            @click="openModal"
-            id="openModalBtn"
-          >
-            help me reflect
-          </button>
         </div>
       </div>
 
-      <!-- Right Panel: AI Image (base64) or fallback cat -->
+      <!-- Right panel: reflection + image -->
       <div class="journal-list-content-right">
-        <div class="content-img">
-          <template v-if="currentJournal.isApproved === true">
-            <img
-              :src="currentJournal.sdImage"
-              alt="Generated Image"
-              class="ai-img"
-              @error="handleImageError"
-            />
-          </template>
-          <div v-if="currentJournal.isApproved === false" class="pending-message">
-            The picture is successfully generated, please wait patiently for review.
-          </div>
-          <div v-if="currentJournal.isApproved !== false && currentJournal.isApproved !== true" class="pending-message">
-            The picture is rejected.
-          </div>
-          <div class="img-text">AI-Generated Image</div>
-        </div>
-      </div>
-    </div>
-  </div>
+        <!-- Help me reflect -->
+        <button class="reflect-btn" @click="startReflect" :disabled="isReflectGenerating">
+          {{ isReflectGenerating ? 'Generating…' : 'Help me reflect' }}
+        </button>
 
-  <!-- Modal -->
-  <div
-    class="modal-overlay"
-    id="modalOverlay"
-    :class="{ active: isModalActive }"
-    v-show="isModalActive"
-  >
-    <div class="modal-card" ref="modalCard">
-      <div class="modal-header" @mousedown="startDrag">
-        <div class="modal-title-container">
-          <h2 class="modal-title">Points to reflect on</h2>
-          <div class="therapy-rating-icon">
-            <img :src="faceIconUrl(faceList[currentJournal.mood2])" alt="therapy mood" />
+        <!-- Points to reflect -->
+        <div class="reflect-section">
+          <div class="reflect-title">Points to reflect on</div>
+
+          <!-- Has generated points -->
+          <div v-if="currentJournal.therapy" class="reflect-box">
+            <ul class="therapy-list" v-if="therapyBullets.length">
+              <li v-for="(q, i) in therapyBullets" :key="i">{{ q }}</li>
+            </ul>
+            <template v-else>{{ currentJournal.therapy }}</template>
+          </div>
+
+          <!-- Generating -->
+          <div v-else-if="isReflectGenerating" class="pending-message reflect-box">
+            The reflect points are generating, please wait patiently.
+          </div>
+
+          <!-- No points yet (idle) -->
+          <div v-else class="reflect-empty">
+            Click “Help me reflect” to generate reflection points.
           </div>
         </div>
-        <span class="close-btn" @click="closeModal">&times;</span>
-      </div>
 
-      <div class="modal-content">
-        <!-- APPROVED: show bullets (fallback to plain text) -->
-        <div
-          v-if="currentJournal.therapy && currentJournal.therapyApproved === true"
-          class="content-text"
-          style="margin-top:12px;"
-        >
-          <ul class="therapy-list" v-if="therapyBullets.length">
-            <li v-for="(q, i) in therapyBullets" :key="i">{{ q }}</li>
-          </ul>
-          <template v-else>{{ modalContent }}</template>
-        </div>
+        <!-- Visual reflection -->
+        <div class="visual-section">
+          <div class="visual-title">Visual reflection</div>
 
-        <!-- GENERATED, waiting for RA review -->
-        <div
-          v-else-if="currentJournal.therapy"
-          class="pending-message"
-          style="margin-top:12px;"
-        >
-          The reflect points are successfully generated, please wait patiently for review.
-        </div>
+          <div class="content-img">
+            <template v-if="currentJournal.isApproved === true">
+              <img
+                :src="currentJournal.sdImage"
+                alt="Generated Image"
+                class="ai-img"
+                @error="handleImageError"
+              />
+            </template>
 
-        <!-- STILL GENERATING -->
-        <div
-          v-else
-          class="pending-message"
-          style="margin-top:12px;"
-        >
-          Please wait for the analysis to be done, and don’t close the tab until it is done
-        </div>
+            <div v-if="currentJournal.isApproved === false" class="pending-message">
+              The picture is successfully generated, please wait patiently for review.
+            </div>
+            <div
+              v-if="currentJournal.isApproved !== false && currentJournal.isApproved !== true"
+              class="pending-message"
+            >
+              The picture is rejected.
+            </div>
 
-        <div class="content-rate">
-          <div class="content-rate-tip">
-            Rate your mood again
-          </div>
-          <div class="content-rate-icons">
-            <img
-              v-for="(item, index) in faceList"
-              :key="index"
-              :src="faceIconUrl(item)"
-              :class="['mood-icon', currentJournal.mood2 === index ? 'selected' : '']"
-              @click="setFace1(item, index)"
-            />
+            <div class="img-text">AI-generated image</div>
           </div>
         </div>
       </div>
@@ -180,23 +131,22 @@ import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { dayMap, monthMap } from "../lib/util";
 import { getLog } from "../api/api";
-import moodSad from '../assets/image/mood-sad.png'
-import moodFrown from '../assets/image/mood-frown.png'
-import moodNormal from '../assets/image/mood-normal.png'
-import moodSmile from '../assets/image/mood-smile.png'
-import moodLaugh from '../assets/image/mood-laugh.png'
+
+import moodSad from "../assets/image/mood-sad.png";
+import moodFrown from "../assets/image/mood-frown.png";
+import moodNormal from "../assets/image/mood-normal.png";
+import moodSmile from "../assets/image/mood-smile.png";
+import moodLaugh from "../assets/image/mood-laugh.png";
 
 export default {
   name: "journal",
   props: {
     journalList: { type: Array, default: [] },
-    // NEW: bumps whenever Firestore snapshot has changes
     version: { type: Number, default: 0 },
   },
   data() {
     return {
       list: [],
-      isModal: false,
       currentJournal: {
         id: "",
         title: "",
@@ -209,80 +159,74 @@ export default {
         therapy: "",
         therapyApproved: undefined,
         isApproved: undefined,
-        feedback: ""
+        feedback: "",
       },
       faceList: [moodSad, moodFrown, moodNormal, moodSmile, moodLaugh],
       currentFace: "",
       fallbackCat: "",
-      modalContent: null,
-      isModalActive: false,
-      isDragging: false,
-      dragOffset: { x: 0, y: 0 },
-      modalPosition: { x: 0, y: 0 }
+      isReflectGenerating: false,
     };
   },
   computed: {
     therapyBullets() {
-      if (!this.modalContent) return [];
-      const text = String(this.modalContent).replace(/\r/g, '\n').trim();
-      let parts = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+      const raw = this.currentJournal?.therapy;
+      if (!raw) return [];
+
+      const text = String(raw).replace(/\r/g, "\n").trim();
+      let parts = text
+        .split(/\n+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      // fallback: "1. ... 2. ..."
       if (parts.length <= 1) {
-        parts = text.split(/\s*\d+\.\s*/).map(s => s.trim()).filter(Boolean);
+        parts = text
+          .split(/\s*\d+\.\s*/)
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
+
       return parts;
-    }
+    },
   },
   watch: {
-    journalList() { this.filterJournal(); },
-    // NEW: when parent bumps version, resync current item from latest list
+    journalList() {
+      this.filterJournal();
+    },
     version() {
       this.filterJournal();
       if (this.currentJournal?.id) {
-        const latest = this.journalList.find(j => j.id === this.currentJournal.id);
+        const latest = this.journalList.find((j) => j.id === this.currentJournal.id);
         if (latest) {
           this.currentJournal = { ...this.currentJournal, ...latest };
-          if (typeof latest.mood === 'number' && latest.mood >= 0 && latest.mood < this.faceList.length) {
+          if (typeof latest.mood === "number" && latest.mood >= 0 && latest.mood < this.faceList.length) {
             this.currentFace = this.faceIconUrl(this.faceList[latest.mood]);
           }
         }
       }
     },
-    $route(to, from) {
-      if (to.path !== from.path) this.closeModal();
-    }
   },
   methods: {
-    async refreshCurrent() {
-      if (!this.currentJournal.id) return;
-      try {
-        const snap = await getDoc(doc(db, 'journalList', this.currentJournal.id));
-        if (snap.exists()) {
-          const latest = snap.data();
-          this.currentJournal = { ...this.currentJournal, ...latest };
-          this.list = this.list.map(it => it.id === this.currentJournal.id ? { ...it, ...latest } : it);
-          this.$message && this.$message.success('Refreshed');
-        }
-      } catch (e) {
-        console.error('Refresh failed:', e);
-        this.$message && this.$message.error('Refresh failed');
+    // ---------- UI actions ----------
+    showJournalDetail(journal) {
+      this.currentJournal = { ...journal };
+      if (journal.mood >= 0 && journal.mood < this.faceList.length) {
+        this.currentFace = this.faceIconUrl(this.faceList[journal.mood]);
+      } else {
+        this.currentFace = this.faceIconUrl("../assets/image/mood-normal.png");
       }
     },
 
+    // ---------- mood ----------
     setFace(item, index) {
       this.currentFace = this.faceIconUrl(item);
       if (this.currentJournal.mood !== index) {
         this.currentJournal.mood = index;
-        this.updateJournalMood('mood', index);
-      }
-    },
-    setFace1(item, index) {
-      if (this.currentJournal.mood2 !== index) {
-        this.currentJournal.mood2 = index;
-        this.updateJournalMood('mood2', index);
+        this.updateJournalMood("mood", index);
       }
     },
     async updateJournalMood(field, value) {
-      if (!this.currentJournal.id || !['mood', 'mood2'].includes(field)) return;
+      if (!this.currentJournal.id || !["mood", "mood2"].includes(field)) return;
       try {
         const docRef = doc(db, "journalList", this.currentJournal.id);
         await updateDoc(docRef, { [field]: value });
@@ -292,39 +236,31 @@ export default {
       }
     },
 
-    async saveFeedback() {
-      if (!this.currentJournal.id) return;
-      try {
-        const docRef = doc(db, "journalList", this.currentJournal.id);
-        await updateDoc(docRef, { feedback: this.currentJournal.feedback });
-        this.$message && this.$message.success("Feedback saved!");
-      } catch (err) {
-        console.error("Error saving feedback to Firestore:", err);
-      }
-    },
+    // ---------- reflection ----------
+    async startReflect() {
+      if (this.isReflectGenerating) return;
 
-    async openModal() {
-      this.isModalActive = true;
-      this.modalPosition = { x: window.innerWidth / 2 - 250, y: window.innerHeight / 2 - 200 };
-      this.updateModalPosition();
+      // if already generated, do nothing (UI already shows it)
+      if (this.currentJournal.therapy) return;
 
-      if (this.currentJournal.therapy) {
-        this.modalContent = this.currentJournal.therapy;
-        return;
-      }
-      this.modalContent = "Generating...";
+      this.isReflectGenerating = true;
       try {
         const res = await getLog({ message: this.currentJournal.content });
-        if (res.data.reply) {
-          this.modalContent = res.data.reply;
-          this.currentJournal.therapy = res.data.reply;
-          await this.saveTherapyToFirestore(res.data.reply);
+        if (res?.data?.reply) {
+          const reply = res.data.reply;
+          this.currentJournal.therapy = reply;
+          await this.saveTherapyToFirestore(reply);
+        } else {
+          this.$message && this.$message.error("Failed to generate reflection points.");
         }
-      } catch (error) {
-        console.error("获取解析失败:", error);
-        this.modalContent = "Failed to fetch therapy.";
+      } catch (e) {
+        console.error("Failed to fetch therapy:", e);
+        this.$message && this.$message.error("Failed to generate reflection points.");
+      } finally {
+        this.isReflectGenerating = false;
       }
     },
+
     async saveTherapyToFirestore(reply) {
       if (!this.currentJournal.id) return;
       try {
@@ -335,132 +271,95 @@ export default {
       }
     },
 
-    closeModal() {
-      this.isModalActive = false;
-      this.modalContent = "";
-      document.removeEventListener('mousemove', this.handleDrag);
-      document.removeEventListener('mouseup', this.stopDrag);
+    async saveFeedback() {
+      if (!this.currentJournal.id) return;
+      try {
+        const docRef = doc(db, "journalList", this.currentJournal.id);
+        await updateDoc(docRef, { feedback: this.currentJournal.feedback });
+        this.$message && this.$message.success("Reflection saved!");
+      } catch (err) {
+        console.error("Error saving feedback to Firestore:", err);
+      }
     },
+
+    // ---------- helpers ----------
     handleImageError(e) {
       e.target.src = this.fallbackCat;
     },
     faceIconUrl(path) {
       return new URL(path, import.meta.url).href;
     },
-
-    showJournalDetail(journal) {
-      this.currentJournal = { ...journal };
-      if (journal.mood >= 0 && journal.mood < this.faceList.length) {
-        this.currentFace = this.faceIconUrl(this.faceList[journal.mood]);
-      } else {
-        this.currentFace = this.faceIconUrl("../assets/image/mood-normal.png");
-      }
-    },
-
     filterJournal() {
       this.list = this.journalList.map((item) => ({
         ...item,
         enDate: this.formatEnDate(item.currentDate),
         weekDay: this.getWeekDay(item.currentDate),
-        feedback: item.feedback || ""
+        feedback: item.feedback || "",
       }));
     },
-
     getWeekDay(ymd) {
-      const [y, m, d] = String(ymd).split('-').map(Number);
+      const [y, m, d] = String(ymd).split("-").map(Number);
       const dt = new Date(y, m - 1, d);
       return dayMap[dt.getDay()];
     },
     formatEnDate(ymd) {
-      const [y, m, d] = String(ymd).split('-').map(Number);
+      const [y, m, d] = String(ymd).split("-").map(Number);
       const dt = new Date(y, m - 1, d);
       const mon = monthMap[dt.getMonth()].slice(0, 3);
-      const dd = String(dt.getDate()).padStart(2, '0');
+      const dd = String(dt.getDate()).padStart(2, "0");
       return `${mon}.${dd}.${y}`;
     },
 
-    startDrag(e) {
-      if (e.target.classList.contains('modal-header')) {
-        this.isDragging = true;
-        const rect = this.$refs.modalCard.getBoundingClientRect();
-        this.dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        document.addEventListener('mousemove', this.handleDrag);
-        document.addEventListener('mouseup', this.stopDrag);
+    // (optional debug)
+    async refreshCurrent() {
+      if (!this.currentJournal.id) return;
+      try {
+        const snap = await getDoc(doc(db, "journalList", this.currentJournal.id));
+        if (snap.exists()) {
+          const latest = snap.data();
+          this.currentJournal = { ...this.currentJournal, ...latest };
+          this.list = this.list.map((it) => (it.id === this.currentJournal.id ? { ...it, ...latest } : it));
+          this.$message && this.$message.success("Refreshed");
+        }
+      } catch (e) {
+        console.error("Refresh failed:", e);
+        this.$message && this.$message.error("Refresh failed");
       }
     },
-    handleDrag(e) {
-      if (this.isDragging) {
-        this.modalPosition = { x: e.clientX - this.dragOffset.x, y: e.clientY - this.dragOffset.y };
-        this.updateModalPosition();
-      }
-    },
-    stopDrag() {
-      this.isDragging = false;
-      document.removeEventListener('mousemove', this.handleDrag);
-      document.removeEventListener('mouseup', this.stopDrag);
-    },
-    updateModalPosition() {
-      if (this.$refs.modalCard) {
-        this.$refs.modalCard.style.left = `${this.modalPosition.x}px`;
-        this.$refs.modalCard.style.top  = `${this.modalPosition.y}px`;
-      }
-    }
   },
   mounted() {
     this.filterJournal();
     this.fallbackCat = new URL("../assets/image/cat.jpeg", import.meta.url).href;
     this.currentFace = this.faceIconUrl("../assets/image/mood-normal.png");
   },
-  beforeUnmount() {
-    document.removeEventListener('mousemove', this.handleDrag);
-    document.removeEventListener('mouseup', this.stopDrag);
-  }
 };
 </script>
 
 <style lang="less" scoped>
+/* ---------- Shared ---------- */
 .pending-message {
-  height: 300px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #666;
   font-style: italic;
-  padding: 20px;
+  padding: 16px;
   border: 2px dashed #eee;
-  border-radius: 8px;
-  margin: 20px 0;
+  border-radius: 12px;
+  background: #fff;
 }
 
-.feedback-container {
-  margin-top: 15px;
-  width: 100%;
-
-  label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-    color: #555;
-  }
-
-  textarea {
-    width: 100%;
-    min-height: 80px;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    resize: vertical;
-    font-family: inherit;
-    font-size: 14px;
-
-    &:focus {
-      outline: none;
-      border-color: #007bff;
-      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-    }
-  }
+.therapy-list {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+}
+.therapy-list li {
+  margin: 8px 0;
+  line-height: 1.6;
 }
 
+/* ---------- Layout ---------- */
 .journal-list {
   height: 100%;
   overflow: hidden;
@@ -481,7 +380,7 @@ export default {
     .list-item {
       padding: 10px 16px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-      font-weight: bold;
+      font-weight: 700;
       cursor: pointer;
 
       &-title {
@@ -495,6 +394,7 @@ export default {
 
       &-date {
         margin-top: 10px;
+        font-size: 13px;
       }
 
       &:last-of-type {
@@ -513,6 +413,7 @@ export default {
     flex: auto;
     display: flex;
 
+    /* middle panel */
     &-left {
       width: 50%;
       height: 100%;
@@ -521,6 +422,31 @@ export default {
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
+
+      .your-reflection-title {
+        font-size: 18px;
+        font-weight: 900;
+        color: #111827;
+        margin-bottom: 8px;
+      }
+
+      .your-reflection textarea {
+        width: 100%;
+        min-height: 130px;
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        resize: vertical;
+        font-family: inherit;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .your-reflection textarea:focus {
+        outline: none;
+        border-color: #111827;
+        box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.12);
+      }
 
       .content-title {
         display: flex;
@@ -531,12 +457,13 @@ export default {
 
         &-text {
           .month {
-            font-size: 24px;
-            font-weight: bold;
+            font-size: 28px;
+            font-weight: 800;
           }
 
           .week {
             margin-top: 4px;
+            color: rgba(0, 0, 0, 0.6);
           }
         }
 
@@ -553,58 +480,45 @@ export default {
         flex: auto;
         overflow: auto;
 
-        &-title {
-          font-size: 24px;
-          font-weight: bold;
-        }
-
         &-content {
-          line-height: 20px;
-          margin-top: 24px;
+          font-size: 16px;
+          line-height: 22px;
+          margin-top: 18px;
         }
       }
 
       .content-rate {
-        padding: 20px 20px 0 20px;
+        padding: 8px 20px 0 20px;
 
         &-tip {
-          font-size: 16px;
-          font-weight: bold;
+          font-size: 18px;
+          font-weight: 800;
         }
 
         &-icon {
           display: flex;
           align-items: center;
           justify-content: center;
+          gap: 12px;
+          margin-top: 10px;
 
           .mood-icon {
-            width: 100%;
-            height: 40px;
-            margin-left: 8px;
-            margin-top: 10px;
+            width: 44px;
+            height: 44px;
             cursor: pointer;
             transition: transform 0.2s, border 0.2s;
 
             &.selected {
-              border: 2px solid #007bff;
+              border: 2px solid #111827; /* black */
               border-radius: 50%;
-              transform: scale(1.1);
+              transform: scale(1.08);
             }
           }
         }
       }
-
-      .content-text {
-        white-space: pre-wrap;
-        max-width: 100%;
-        flex-wrap: wrap;
-        padding: 20px;
-        font-size: 16px;
-        font-weight: bold;
-        overflow: auto;
-      }
     }
 
+    /* right panel */
     &-right {
       width: 50%;
       height: 100%;
@@ -614,195 +528,80 @@ export default {
       border-left: 1px solid rgba(0, 0, 0, 0.1);
       display: flex;
       flex-direction: column;
+      gap: 16px;
+
+      .reflect-btn {
+        height: 44px;              /* ← lock height */
+        line-height: 44px;         /* ← vertically center text */
+        padding: 0 24px;           /* ← horizontal only */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        width: 100%;
+        border-radius: 12px;
+        border: none;
+        background: #111827;
+        color: #fff;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .reflect-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .reflect-title {
+        font-size: 18px;
+        font-weight: 900;
+        color: #111827;
+        margin-bottom: 10px;
+      }
+
+      .reflect-box {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 14px;
+        background: #fff;
+      }
+
+      .reflect-empty {
+        color: rgba(0, 0, 0, 0.55);
+        font-style: italic;
+      }
+
+      .visual-title {
+        font-size: 18px;
+        font-weight: 900;
+        color: #111827;
+        margin-bottom: 10px;
+      }
 
       .content-img {
         display: flex;
         align-items: center;
         justify-content: center;
         flex-direction: column;
-        flex: auto;
+        flex: none;
         width: 100%;
-
-        .ai-img {
-          width: 100%;
-          height: auto;
-        }
-
-        .img-text {
-          margin-top: 20px;
-        }
+        padding: 14px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
       }
 
-      .content-tip {
-        flex: none;
-        color: rgba(198, 108, 116);
+      .ai-img {
+        width: 100%;
+        height: auto;
+        border-radius: 14px;
+        overflow: hidden;
+      }
+
+      .img-text {
+        margin-top: 10px;
+        color: rgba(0, 0, 0, 0.55);
       }
     }
-  }
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0);
-  display: none;
-  z-index: 1000;
-  pointer-events: none;
-
-  &.active {
-    display: block;
-  }
-}
-
-.modal-card {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-  width: 500px;
-  text-align: center;
-  padding: 24px;
-  position: fixed;
-  cursor: default;
-  user-select: none;
-  pointer-events: auto;
-  z-index: 1001;
-
-  .modal-header {
-    cursor: move;
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 5px;
-  }
-}
-
-.modal-title-container {
-  display: flex;
-  align-items: center;   /* keep icon + button aligned */
-  gap: 12px;     
-}
-
-.therapy-rating-icon img {
-  width: 30px;
-  height: 30px;
-  margin-bottom: 0px;
-}
-
-.close-btn {
-  position: absolute;
-  top: 16px;
-  right: 20px;
-  font-size: 28px;
-  cursor: pointer;
-  color: #666;
-  transition: color 0.3s;
-}
-
-.close-btn:hover {
-  color: #000;
-}
-
-.modal-title {
-  text-align: center;
-  font-size: 22px;
-  font-weight: bold;
-  margin-bottom: 24px;
-  color: #333;
-}
-
-.modal-content {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  min-height: 400px;
-  background-color: white;
-  border-radius: 8px;
-}
-
-.content-text {
-  width: 100%;
-  max-width: 460px;
-  height: 300px;
-  overflow-y: scroll;
-  font-size: 16px;
-  color: #333;
-  margin: 20px 0;
-  padding: 16px;
-  box-sizing: border-box;
-  word-wrap: break-word;
-  word-break: break-word;
-  line-height: 1.6;
-  text-align: left;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background-color: #fff;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-/* bullets inside the scroll box */
-.therapy-list {
-  margin: 0;
-  padding-left: 20px;
-  list-style: disc;
-}
-.therapy-list li {
-  margin: 6px 0;
-  line-height: 1.6;
-}
-
-.content-rate {
-  margin-top: 24px;
-  text-align: center;
-  width: 100%;
-}
-
-.content-rate-tip {
-  font-size: 16px;
-  margin-bottom: 16px;
-  color: #555;
-}
-
-.save-btn {
-  padding: 8px 16px;
-  font-size: 14px;
-  color: #fff;
-  background-color: #007bff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-  margin-left: 8px;
-}
-
-.save-btn:hover {
-  background-color: #0056b3;
-}
-
-.content-rate-icons {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-}
-
-.mood-icon {
-  width: 40px;
-  height: 40px;
-  margin: 5px;
-  cursor: pointer;
-  transition: transform 0.3s, border 0.3s;
-  border-radius: 50%;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-
-  &.selected {
-    border: 2px solid #007bff;
-    transform: scale(1.1);
-  }
-
-  &:hover {
-    transform: scale(1.1);
   }
 }
 </style>
